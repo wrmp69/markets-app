@@ -325,12 +325,67 @@ function celebratePR(entry){
   window.setTimeout(()=>burst.classList.add('is-out'),1500);
   window.setTimeout(()=>burst.remove(),2100);
 }
+
+function sessionCoachAnalysis(){
+  const entries=state.session.entries||[], cardio=state.session.cardio||[];
+  if(!entries.length && !cardio.length) return null;
+  const totalVolume=entries.reduce((s,e)=>s+volume(e),0);
+  const seriesCount=entries.length;
+  const prs=sessionPREvents();
+  const cardioMinutes=cardio.reduce((s,c)=>s+(Number(c.duration)||0),0);
+  const groupsMap={};
+  entries.forEach(e=>{
+    const g=e.groupe||'Autres';
+    groupsMap[g] ||= {series:0,volume:0,exos:new Set()};
+    groupsMap[g].series += 1;
+    groupsMap[g].volume += volume(e);
+    groupsMap[g].exos.add(e.nom);
+  });
+  const groups=Object.entries(groupsMap).map(([name,v])=>({name,series:v.series,volume:v.volume,exos:v.exos.size})).sort((a,b)=>b.series-a.series||b.volume-a.volume);
+  const dominant=groups[0]||null;
+  const uniqueExercises=[...new Set(entries.map(e=>e.nom))].length;
+  const balanceRatio=dominant&&seriesCount?dominant.series/seriesCount:0;
+  const density=Math.round(totalVolume/Math.max(1,seriesCount));
+  let score=Math.round(seriesCount*7 + Math.min(34,totalVolume/450) + prs.length*10 + cardioMinutes/2 + uniqueExercises*3);
+  score=Math.max(8,Math.min(100,score));
+  const level=score>=74?'red':score>=48?'orange':'green';
+  const stateLabel=score>=74?'Très intense':score>=48?'Chargé':'Contrôlé';
+  let headline='Séance propre en construction';
+  let advice='Continue à valider tes séries sans forcer sale.';
+  let balance='Répartition encore courte, ajoute quelques séries pour une analyse fiable.';
+  if(prs.length){ headline='Séance productive'; advice='Tu as déclenché un PR : garde une bonne exécution et évite d’empiler trop de séries lourdes derrière.'; }
+  if(seriesCount>=5 && balanceRatio>.72 && dominant){ balance=`Séance très orientée ${dominant.name}. C’est cohérent si c’est voulu, sinon ajoute un rappel antagoniste ou stabilisateur.`; }
+  else if(groups.length>=3){ balance='Répartition complète : plusieurs groupes travaillent, surveille surtout la fatigue globale.'; }
+  else if(dominant){ balance=`Focus principal : ${dominant.name}, ${dominant.series} série(s).`; }
+  if(score>=74){ headline='Attention à la fatigue'; advice='La séance commence à être lourde. Termine avec des séries propres, évite le record forcé.'; }
+  else if(score>=48 && !prs.length){ headline='Bonne intensité'; advice='Tu es dans une zone productive. Le meilleur move : une rep propre de plus, pas forcément plus lourd.'; }
+  const fm=state.ui.followMode;
+  if(fm?.exercises?.length){
+    const remaining=fm.exercises.map(x=>x.nom).filter(n=>entries.filter(e=>e.nom===n).length<3);
+    if(remaining.length) advice=`Template en cours : encore ${remaining.slice(0,2).join(', ')}${remaining.length>2?'…':''}. Garde assez d’énergie pour finir propre.`;
+    else advice='Template terminé : sauvegarde la séance ou ajoute seulement un finisher léger.';
+  }
+  return {score,level,stateLabel,headline,advice,balance,totalVolume,seriesCount,uniqueExercises,prs,cardioMinutes,groups,dominant,density};
+}
+function sessionCoachPanel(){
+  const a=sessionCoachAnalysis();
+  if(!a) return '';
+  const groupChips=a.groups.slice(0,4).map(g=>`<span><b>${esc(g.name)}</b><em>${g.series} séries</em></span>`).join('');
+  return `<section class="session-ai ${a.level}">
+    <div class="session-ai-head"><div><span class="ai-kicker">Coach IA séance</span><h3>${esc(a.headline)}</h3></div><strong>${a.score}</strong></div>
+    <div class="session-ai-grid"><div><span>État</span><b>${esc(a.stateLabel)}</b></div><div><span>Volume</span><b>${Math.round(a.totalVolume)} kg</b></div><div><span>Exercices</span><b>${a.uniqueExercises}</b></div><div><span>PR</span><b>${a.prs.length}</b></div></div>
+    <p>${esc(a.advice)}</p>
+    <div class="session-ai-balance"><span>${icon('target')} ${esc(a.balance)}</span></div>
+    ${groupChips?`<div class="session-ai-groups">${groupChips}</div>`:''}
+  </section>`;
+}
 function currentSessionList(){
   const e=state.session.entries||[], c=state.session.cardio||[];
   if(!e.length && !c.length) return `<div class="empty">Aucun exercice. Lance-toi.</div>`;
   const prs=sessionPREvents();
   const prPanel=prs.length?`<div class="pr-strip"><div><span>Live records</span><strong>${prs.length} PR session</strong></div>${prs.map(x=>`<button class="pr-mini" data-action="exercise-open" data-name="${esc(x.nom)}"><b>NEW PR</b><small>${esc(x.nom)}</small><em>${esc(prLabelFor(x))}</em></button>`).join('')}</div>`:'';
-  return `${prPanel}<div class="list session-timeline">${e.map(entryCard).join('')}${c.map(cardioItem).join('')}</div><div class="card session-total"><div class="between"><span class="muted">Volume séance</span><strong>${Math.round(e.reduce((s,x)=>s+volume(x),0))} kg</strong></div></div>`;
+  const coach=sessionCoachPanel();
+  return `${prPanel}${coach}<div class="list session-timeline">${e.map(entryCard).join('')}${c.map(cardioItem).join('')}</div><div class="card session-total"><div class="between"><span class="muted">Volume séance</span><strong>${Math.round(e.reduce((s,x)=>s+volume(x),0))} kg</strong></div></div>`;
 }
 function entryCard(e){
   const rm=Number(e.rm1reel)||oneRM(e.poids,e.reps);
