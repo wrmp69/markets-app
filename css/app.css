@@ -11,83 +11,16 @@
 .exercise-insights{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:10px 0 14px}.insight-card{background:var(--surface2);border:1px solid var(--line);border-radius:14px;padding:9px 10px;min-height:58px}.insight-card span{display:block;font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin-bottom:4px}.insight-card b{font-size:14px;color:var(--text)}.insight-empty{background:var(--surface2);border:1px dashed var(--line);border-radius:14px;padding:10px 12px;font-size:12px;color:var(--muted)}
 
 
-/* Objectif conseillé exercice */
-.insight-goal{grid-column:1/-1;border:1px solid color-mix(in srgb,var(--accent) 65%,var(--line));background:color-mix(in srgb,var(--accent) 10%,var(--surface));border-radius:14px;padding:10px 12px;display:flex;flex-direction:column;gap:3px;}
-.insight-goal span{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;}
-.insight-goal b{font-size:18px;color:var(--text);}
-.insight-goal small{color:var(--muted);font-size:12px;}
-.insight-goal em{  font-size:12px;color:var(--muted);  font-style:normal;}
-
-/* v6 coach progression */
-.rpe-chips{display:flex;gap:7px;flex-wrap:wrap}.rpe-chip{border:1px solid var(--line);background:var(--surface2);color:var(--muted);border-radius:999px;padding:8px 12px;font-weight:800}.rpe-chip.is-active{background:var(--accent);border-color:var(--accent);color:#111}.insight-extra{grid-column:1/-1;background:var(--surface2);border:1px solid var(--line);border-radius:14px;padding:10px 12px;display:flex;flex-direction:column;gap:4px}.insight-extra span{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em}.insight-extra b{font-size:13px;line-height:1.35}.heatmap{display:grid;grid-template-columns:repeat(14,1fr);gap:5px;margin:8px 0 10px}.heat-cell{aspect-ratio:1;border-radius:5px;background:var(--surface2);border:1px solid var(--line)}.heat-cell.on{background:var(--accent);border-color:var(--accent);box-shadow:0 0 0 1px color-mix(in srgb,var(--accent) 20%,transparent)}.balance-list{display:grid;gap:10px}.balance-row{display:grid;grid-template-columns:1fr auto 54px;gap:8px;align-items:center;font-size:13px}.balance-row span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.balance-row b{font-size:12px;color:var(--muted)}.balance-row small{font-size:11px;color:var(--muted);text-align:right}.balance-bar{grid-column:1/3;height:7px;border-radius:999px;background:var(--surface2);overflow:hidden}.balance-bar i{display:block;height:100%;border-radius:999px;background:var(--accent)}.coach-note{margin:12px 0 0;color:var(--muted);font-size:12px;line-height:1.5}.pr-list{display:grid;gap:9px}.pr-item{display:flex;gap:10px;align-items:center;background:var(--surface2);border:1px solid var(--line);border-radius:14px;padding:10px}.pr-item>span{font-size:22px}.pr-item b{display:block}.pr-item small{display:block;color:var(--muted);margin-top:2px;font-size:12px}
-
-/* dashboard live */
-.live-dashboard{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-bottom:14px}
-.live-kpi{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:10px 12px}
-.live-kpi span{display:block;font-size:11px;color:var(--muted);margin-bottom:4px}
-.live-kpi b{font-size:18px}
-.live-groups{grid-column:1/-1;display:flex;flex-wrap:wrap;gap:7px}
-.live-groups span{border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:6px 10px;font-size:12px}
-.empty-dashboard{display:flex;justify-content:center;align-items:center;padding:16px;border:1px dashed var(--line);border-radius:16px;color:var(--muted)}
-
-/* Coach */
-.coach-dashboard{background:linear-gradient(135deg,color-mix(in srgb,var(--accent) 10%,var(--surface)),var(--surface));border:1px solid color-mix(in srgb,var(--accent) 42%,var(--line));border-radius:18px;padding:12px;margin-bottom:14px}
-.coach-main{display:grid;gap:3px;margin-bottom:10px}
-.coach-main b{font-size:16px}
-.coach-main span{font-size:13px;color:var(--muted)}
-.coach-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:7px}
-.coach-grid div{background:var(--surface2);border:1px solid var(--line);border-radius:13px;padding:8px 7px;text-align:center}
-.coach-grid span{display:block;font-size:10px;color:var(--muted);margin-bottom:3px}
-.coach-grid b{font-size:12px}
-.coach-note{margin-top:9px;font-size:12px;color:var(--muted)}
-
-/* Fiche exercice PRO */
-.select-row{grid-template-columns:1fr auto auto auto auto}
-.entry-actions{grid-template-columns:repeat(4,1fr)}
-.exercise-hero h2{font-family:Syne,sans-serif;margin:3px 0 3px}
-.exercise-hero p{margin:0;color:var(--muted)}
-.exercise-kpis{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}
-.detail-goal{border:1px solid color-mix(in srgb,var(--accent) 65%,var(--line));background:color-mix(in srgb,var(--accent) 10%,var(--surface));border-radius:15px;padding:11px 12px;display:grid;gap:3px;margin-bottom:10px}
-.detail-goal span,.detail-line span{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em}
-.detail-goal b{font-size:18px}.detail-goal small,.detail-goal em{font-size:12px;color:var(--muted);font-style:normal}
-.detail-line{background:var(--surface2);border:1px solid var(--line);border-radius:15px;padding:10px 12px;display:grid;gap:4px;margin-top:8px}
-.detail-line b{font-size:13px;line-height:1.35}
-.detail-ranges{margin-top:8px}
-@media(min-width:520px){.exercise-kpis{grid-template-columns:repeat(4,1fr)}}
-
-/* IA progression */
-.coach-ai{margin-top:9px;background:var(--surface2);border:1px solid var(--line);border-radius:14px;padding:9px 10px;display:grid;gap:3px}
-.coach-ai span{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em}
-.coach-ai b{font-size:12px;line-height:1.35}
-.coach-ai small{font-size:11px;color:var(--muted)}
-.coach-ai.up,.coach-ai.progress{border-color:color-mix(in srgb,var(--ok) 45%,var(--line))}
-.coach-ai.deload{border-color:color-mix(in srgb,var(--danger) 55%,var(--line))}
-.coach-ai.hold,.coach-ai.stagnation{border-color:color-mix(in srgb,var(--accent) 55%,var(--line))}
-.insight-ai{grid-column:1/-1;background:linear-gradient(135deg,color-mix(in srgb,var(--blue) 12%,var(--surface)),var(--surface2));border:1px solid color-mix(in srgb,var(--blue) 45%,var(--line));border-radius:14px;padding:10px 12px;display:flex;flex-direction:column;gap:4px}
-.insight-ai span{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em}
-.insight-ai b{font-size:14px;line-height:1.35}
-.insight-ai small{font-size:12px;color:var(--muted)}
-.insight-ai.up,.insight-ai.progress{border-color:color-mix(in srgb,var(--ok) 55%,var(--line));background:color-mix(in srgb,var(--ok) 10%,var(--surface))}
-.insight-ai.deload{border-color:color-mix(in srgb,var(--danger) 55%,var(--line));background:color-mix(in srgb,var(--danger) 10%,var(--surface))}
-.detail-ai{border:1px solid color-mix(in srgb,var(--blue) 45%,var(--line));background:linear-gradient(135deg,color-mix(in srgb,var(--blue) 10%,var(--surface)),var(--surface));border-radius:16px;padding:12px;margin-bottom:10px;display:grid;gap:5px}
-.detail-ai span{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em}
-.detail-ai h3{margin:0;font-family:Syne,sans-serif;font-size:18px}
-.detail-ai b{font-size:14px}
-.detail-ai em{font-style:normal;color:var(--muted);font-size:12px}
-.detail-ai.up,.detail-ai.progress{border-color:color-mix(in srgb,var(--ok) 55%,var(--line))}
-.detail-ai.deload{border-color:color-mix(in srgb,var(--danger) 55%,var(--line))}
-.ai-meter{height:7px;background:var(--surface2);border-radius:999px;overflow:hidden;margin-top:3px}
-.ai-meter i{display:block;height:100%;background:var(--accent);border-radius:999px}
-
-
-/* v8 nettoyage live : séance compacte, analyse complète dans fiche exercice */
-.coach-dashboard.compact{padding:10px 12px;margin-bottom:12px}
-.coach-dashboard.compact .coach-main{margin-bottom:7px}
-.coach-dashboard.compact .coach-main b{font-size:15px}
-.coach-dashboard.compact .coach-main span{font-size:13px}
-.coach-quick{display:flex;gap:6px;flex-wrap:wrap}
-.coach-quick span{border:1px solid var(--line);background:var(--surface2);border-radius:999px;padding:5px 8px;font-size:11px;color:var(--muted)}
-.insight-goal.compact{padding:9px 10px;gap:2px}
-.insight-goal.compact b{font-size:15px}
-.insight-more{grid-column:1/-1}
-.exercise-insights .insight-extra{display:none}
+/* vPremium UI polish */
+:root{--surface:#17191d;--surface2:#21242a;--line:#2b3038;--accent:#c9ff35;--shadow:0 18px 50px rgba(0,0,0,.42)}
+html,body{background:radial-gradient(circle at 50% -10%,rgba(201,255,53,.12),transparent 34%),var(--bg)}
+.card,.item,.kpi{box-shadow:0 12px 34px rgba(0,0,0,.24);border-color:color-mix(in srgb,var(--line) 80%,transparent)}
+.workout-panel{background:linear-gradient(180deg,color-mix(in srgb,var(--surface) 88%,var(--accent) 3%),var(--surface));border-color:color-mix(in srgb,var(--accent) 18%,var(--line))}
+.coach-dashboard.premium{background:linear-gradient(135deg,rgba(201,255,53,.16),rgba(56,189,248,.07) 42%,var(--surface));border:1px solid color-mix(in srgb,var(--accent) 38%,var(--line));border-radius:22px;padding:14px;margin-bottom:14px;box-shadow:0 18px 46px rgba(0,0,0,.32)}
+.coach-main{display:grid;gap:4px;margin-bottom:10px}.coach-main b{font-size:18px;font-family:Syne,sans-serif}.coach-main span{font-size:13px;color:var(--text);line-height:1.35}
+.coach-quick{display:flex;gap:7px;flex-wrap:wrap}.coach-quick span{background:rgba(255,255,255,.055);border:1px solid color-mix(in srgb,var(--line) 75%,transparent);border-radius:999px;padding:7px 10px;font-size:12px;color:var(--muted)}
+.exercise-insights{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:10px 0 14px}.insight-goal.compact{grid-column:1/-1;border:1px solid color-mix(in srgb,var(--accent) 58%,var(--line));background:linear-gradient(135deg,rgba(201,255,53,.13),rgba(255,255,255,.03));border-radius:16px;padding:11px 12px;display:grid;gap:3px}.insight-goal.compact span{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em}.insight-goal.compact b{font-size:18px;color:var(--text)}.insight-goal.compact em{font-size:12px;color:var(--muted);font-style:normal}.insight-goal.up{border-color:color-mix(in srgb,var(--ok) 55%,var(--line))}.insight-goal.hold{border-color:color-mix(in srgb,#f59e0b 55%,var(--line))}.insight-goal.deload{border-color:color-mix(in srgb,var(--danger) 55%,var(--line))}
+.insight-card{background:linear-gradient(180deg,var(--surface2),color-mix(in srgb,var(--surface2) 82%,#000));border:1px solid var(--line);border-radius:15px;padding:10px 11px;min-height:58px}.insight-card span{display:block;font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin-bottom:4px}.insight-card b{font-size:14px;color:var(--text)}
+.btn.primary{box-shadow:0 8px 22px rgba(201,255,53,.16)}.stepper input,select,input{background:color-mix(in srgb,var(--surface2) 92%,#fff 2%)}
+.entry-head{border-radius:15px}.entry-item{background:linear-gradient(180deg,var(--surface),color-mix(in srgb,var(--surface) 90%,#000))}.badge.blue{background:rgba(56,189,248,.07)}
+@media(min-width:820px){.desktop-2{grid-template-columns:400px 1fr}.coach-dashboard.premium{position:sticky;top:75px;z-index:3}}
