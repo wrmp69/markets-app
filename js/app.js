@@ -19,13 +19,17 @@ let groupFilter = '';
 let sessionTab = 'muscu';
 let cardioType = 'marche';
 let chart = null;
+let detailChart = null;
+let exerciseDetailName = null;
+let exerciseMetric = 'weight';
+let exerciseRange = 'all';
 let statsMode = 'trend';
 let statsRange = 'month';
 let statsMetric = 'weight';
 let selectedMachineName = null;
 let formDraft = { poids: null, series: 1, reps: 10, rm: '' };
 
-const titles = {home:'Accueil', session:'Séance', history:'Historique', stats:'Stats', settings:'Réglages'};
+const titles = {home:'Accueil', session:'Séance', history:'Historique', stats:'Stats', settings:'Réglages', exercise:'Fiche exercice'};
 const view = $('#view');
 
 function persist(){ saveState(state); }
@@ -38,72 +42,90 @@ function entriesForExercise(name){ const all=[]; Object.values(state.history||{}
 function maxWeightFor(name){ const rows=entriesForExercise(name); return rows.length ? Math.max(...rows.map(e=>Number(e.poids)||0)) : null; }
 function maxRepsForWeight(name, poids){ const p=Number(poids); const rows=entriesForExercise(name).filter(e=>Number(e.poids)===p); return rows.length ? Math.max(...rows.map(e=>Number(e.reps)||0)) : null; }
 
-function latestWorkoutEntriesFor(name){
+function workoutBucketsForExercise(name){
   const buckets=[];
   Object.entries(state.history||{}).forEach(([date,day])=>{
     const rows=(day.entries||[]).filter(e=>e.nom===name&&Number(e.poids)>0&&Number(e.reps)>0);
-    if(rows.length) buckets.push({date,rows});
+    if(rows.length) buckets.push({date,rows:rows.slice().sort((a,b)=>(Number(a.series)||0)-(Number(b.series)||0)||new Date(a.createdAt||0)-new Date(b.createdAt||0))});
   });
   const current=(state.session.entries||[]).filter(e=>e.nom===name&&Number(e.poids)>0&&Number(e.reps)>0);
-  if(current.length) buckets.push({date:'session',rows:current});
-  if(!buckets.length) return [];
-  buckets.sort((a,b)=>a.date==='session'?1:b.date==='session'?-1:a.date.localeCompare(b.date));
-  return buckets.at(-1).rows.slice().sort((a,b)=>(Number(a.series)||0)-(Number(b.series)||0)||new Date(a.createdAt||0)-new Date(b.createdAt||0));
+  if(current.length) buckets.push({date:'session',rows:current.slice().sort((a,b)=>(Number(a.series)||0)-(Number(b.series)||0)||new Date(a.createdAt||0)-new Date(b.createdAt||0))});
+  return buckets.sort((a,b)=>a.date==='session'?1:b.date==='session'?-1:a.date.localeCompare(b.date));
 }
-function preferredWeightForExercise(name){
-  const latest=latestWorkoutEntriesFor(name);
-  if(latest.length) return Math.max(...latest.map(e=>Number(e.poids)||0));
-  return maxWeightFor(name)||null;
-}
+function latestWorkoutEntriesFor(name){ const b=workoutBucketsForExercise(name); return b.length?b.at(-1).rows:[]; }
+function preferredWeightForExercise(name){ const latest=latestWorkoutEntriesFor(name); if(latest.length) return Math.max(...latest.map(e=>Number(e.poids)||0)); const max=maxWeightFor(name); return max||null; }
+function repsText(rows){ return rows.map(e=>Number(e.reps)||0).filter(Boolean).join(' / '); }
 function progressionAIFor(name){
-  const rows=entriesForExercise(name).filter(e=>Number(e.poids)>0&&Number(e.reps)>0);
-  const latest=latestWorkoutEntriesFor(name), m=machineByName(name), step=Number(m?.step||2.5);
-  if(rows.length<3||latest.length<2) return {level:'learn',label:'🧠 IA en apprentissage',short:'Accumule quelques séries',action:null,detail:'Encore peu de données fiables.'};
-  const targetWeight=Math.max(...latest.map(e=>Number(e.poids)||0));
-  const targetRows=latest.filter(e=>Number(e.poids)===targetWeight);
-  const reps=targetRows.map(e=>Number(e.reps)||0).filter(Boolean);
+  const buckets=workoutBucketsForExercise(name), rows=entriesForExercise(name).filter(e=>Number(e.poids)>0&&Number(e.reps)>0);
+  const machine=machineByName(name), step=Number(machine?.step||2.5);
+  if(rows.length<3||buckets.length<2) return {level:'learn',label:'IA en apprentissage',title:'Construire une base fiable',text:'Fais encore 2-3 séances sur cet exercice. Je garde un objectif simple pour éviter une recommandation au hasard.',optionA:'Garde la charge actuelle',optionB:'Travaille propre',signal:'Données courtes'};
+  const latest=buckets.at(-1), prev=buckets.at(-2), latestRows=latest.rows, prevRows=prev.rows;
+  const targetWeight=Math.max(...latestRows.map(e=>Number(e.poids)||0));
+  const targetRows=latestRows.filter(e=>Number(e.poids)===targetWeight);
+  const baseRows=targetRows.length?targetRows:latestRows;
+  const reps=baseRows.map(e=>Number(e.reps)||0).filter(Boolean);
   const avg=a=>a.length?a.reduce((s,x)=>s+x,0)/a.length:0;
-  const rpe=avg(latest.map(e=>Number(e.rpe)).filter(Boolean));
-  const recentSame=rows.filter(e=>Number(e.poids)===targetWeight).slice(-6);
-  const good=recentSame.filter(e=>(Number(e.reps)||0)>=8&&(!e.rpe||Number(e.rpe)<=8)).length;
-  const bestRecent=Math.max(...rows.slice(-8).map(e=>Number(e.rm1reel)||oneRM(e.poids,e.reps)));
-  const bestBefore=Math.max(0,...rows.slice(0,-8).map(e=>Number(e.rm1reel)||oneRM(e.poids,e.reps)));
+  const avgRpe=avg(latestRows.map(e=>Number(e.rpe)).filter(Boolean));
+  const prevRM=Math.max(0,...prevRows.map(e=>Number(e.rm1reel)||oneRM(e.poids,e.reps)));
+  const lastRM=Math.max(0,...latestRows.map(e=>Number(e.rm1reel)||oneRM(e.poids,e.reps)));
+  const rmDelta=lastRM-prevRM;
+  const maxReps=Math.max(...reps);
   const nextWeight=Math.round((targetWeight+step)*10)/10;
-  const deloadWeight=Math.round(targetWeight*0.9*10)/10;
-  const targetReps=(reps.length?reps:latest.map(e=>Number(e.reps)||0).filter(Boolean)).map((r,i,a)=>i===a.length-1?r+1:r).join(' / ');
-  if(rpe>=9) return {level:'hold',label:'🟠 Charge dure',short:'Garde propre',action:`${targetWeight} kg · ${targetReps}`,detail:`RPE haut : évite de monter trop vite.`};
-  if(good>=3) return {level:'up',label:'🟢 Montée possible',short:`Tente ${nextWeight} kg`,action:`${nextWeight} kg · ${Math.max(5,Math.round(Math.max(...reps)*0.75))} reps`,detail:`Plusieurs séries solides à ${targetWeight} kg.`};
-  if(bestBefore&&bestRecent<=bestBefore+1&&rpe>=8) return {level:'deload',label:'🔴 Allège si besoin',short:'Fatigue possible',action:`${deloadWeight} kg · 8 / 8 / 8`,detail:'Performance stable + effort haut.'};
-  return {level:'steady',label:'⚖️ Stable',short:'+1 rep propre',action:`${targetWeight} kg · ${targetReps}`,detail:'Progression contrôlée.'};
+  const deloadWeight=Math.max(0,Math.round(targetWeight*.9*10)/10);
+  const repTarget=reps.map((r,i)=>i===reps.length-1?r+1:r).join(' / ');
+  const validated=rows.filter(e=>Number(e.poids)===targetWeight&&(Number(e.reps)||0)>=8&&(!e.rpe||Number(e.rpe)<=8)).slice(-6).length>=3;
+  if(avgRpe>=9&&rmDelta<0) return {level:'deload',label:'Fatigue détectée',title:'Récupération prioritaire',text:`Ta performance descend avec un ressenti haut. Allège aujourd’hui pour repartir propre.`,optionA:`${deloadWeight} kg · 8 / 8 / 8 reps`,optionB:`${targetWeight} kg très propre`,signal:'Allège'};
+  if(avgRpe>=9) return {level:'hold',label:'Charge exigeante',title:'Ne monte pas tout de suite',text:`RPE haut : sécurise la technique avant de monter la charge.`,optionA:`Reste à ${targetWeight} kg`,optionB:`Vise ${repTarget} reps`,signal:'Stable'};
+  if(validated&&maxReps>=10) return {level:'up',label:'Montée possible',title:'Force & Hypertrophie',text:`Tu es proche de ton max efficace à ${targetWeight} kg. Deux options pertinentes :`,optionA:`Reste à ${targetWeight} kg · vise ${maxReps+1}-${maxReps+3} reps`,optionB:`Passe à ${nextWeight} kg · vise 8-12 reps`,signal:'Monte bientôt'};
+  if(rmDelta>1) return {level:'progress',label:'Bonne tendance',title:'Progression régulière',text:`Tu progresses. Garde la charge et ajoute une rep propre sur la dernière série.`,optionA:`${targetWeight} kg · ${repTarget} reps`,optionB:`Repos ${getTimerFor(name)}s`,signal:'En hausse'};
+  return {level:'steady',label:'Progression contrôlée',title:'Séance propre',text:`Aucun signal fort. Garde la charge et valide tes séries proprement.`,optionA:`${targetWeight} kg · ${repTarget} reps`,optionB:`Technique propre`,signal:'Stable'};
 }
 function getExerciseGoal(name){
   const ai=progressionAIFor(name), latest=latestWorkoutEntriesFor(name);
-  if(ai?.action) return {main:ai.action,alt:null,reason:ai.detail,level:ai.level,label:ai.label};
   if(!latest.length) return null;
   const targetWeight=Math.max(...latest.map(e=>Number(e.poids)||0));
-  const base=latest.filter(e=>Number(e.poids)===targetWeight);
+  const rows=latest.filter(e=>Number(e.poids)===targetWeight);
+  const base=rows.length?rows:latest;
   const reps=base.map(e=>Number(e.reps)||0).filter(Boolean);
-  if(!reps.length) return null;
-  return {main:`${targetWeight} kg · ${reps.map((r,i)=>i===reps.length-1?r+1:r).join(' / ')} reps`,alt:null,reason:`Dernière séance à ${targetWeight} kg.`,level:'steady',label:'🎯 Objectif'};
+  const target=reps.map((r,i)=>i===reps.length-1?r+1:r).join(' / ');
+  return {main:ai?.optionA||`${targetWeight} kg · ${target} reps`,alt:ai?.optionB||null,reason:ai?.text||`Dernière séance : ${base.length} série(s) à ${targetWeight} kg (${reps.join(' / ')} reps)`};
 }
 function warmupSuggestionFor(name){
-  const goal=getExerciseGoal(name), target=Number(String(goal?.main||'').match(/([\d.]+)\s*kg/)?.[1]||0);
-  if(!target||target<10) return null;
+  const latest=latestWorkoutEntriesFor(name); if(!latest.length) return null;
+  const target=Math.max(...latest.map(e=>Number(e.poids)||0)); if(!target||target<10) return null;
   const round=v=>Math.round(v*2)/2;
-  return [0.4,0.6,0.8].map((p,i)=>`${Math.max(2.5,round(target*p))}×${[12,8,4][i]}`).join(' · ');
+  return [{p:round(target*.5),r:12},{p:round(target*.7),r:8},{p:round(target*.85),r:4}].filter((s,i,a)=>i===0||s.p>a[i-1].p).map(s=>`${s.p}×${s.r}`).join(' · ');
 }
-function progressionAdviceFor(name){ return progressionAIFor(name)?.detail || null; }
-function liveDashboard(){
-  const entries=state.session.entries||[], m=defaultMachine();
-  const name=m?.nom||selectedMachineName, goal=name?getExerciseGoal(name):null, ai=name?progressionAIFor(name):null;
-  const currentRows=entries.filter(e=>e.nom===name), startedAt=entries.at(-1)?.createdAt;
-  const mins=startedAt?Math.max(1,Math.round((Date.now()-new Date(startedAt).getTime())/60000)):0;
-  const last=currentRows[0], best=maxRepsForWeight(name,Number($('#poids')?.value||formDraft.poids||last?.poids||0));
-  const recordPossible=best&&Number(formDraft.reps)>=best, rest=getTimerFor(name);
-  const fm=state.ui.followMode, remaining=fm?(fm.exercises||[]).map(x=>x.nom).filter(n=>entries.filter(e=>e.nom===n).length<3):[];
-  const signal=recordPossible?'🔥 Record possible':(ai?.level==='up'?'📈 Monte bientôt':ai?.level==='hold'?'✅ Stabilise':ai?.level==='deload'?'⚠️ Allège':'—');
-  if(!entries.length&&!fm) return `<div class="coach-dashboard premium"><div class="coach-main"><b>🚀 Prêt</b><span>${goal?`🎯 ${goal.main}`:'Choisis un exercice et lance ta première série.'}</span></div></div>`;
-  return `<div class="coach-dashboard premium"><div class="coach-main"><b>🏋️ ${esc(name||'Exercice')}</b><span>${goal?`🎯 ${goal.main}`:'Objectif : démarre proprement'}</span></div><div class="coach-quick"><span>⏱ ${mins||'—'} min</span><span>Repos ${rest}s</span><span>${signal}</span></div>${fm?`<div class="coach-note">📋 Restant : ${remaining.length?remaining.slice(0,3).map(esc).join(', '):'template terminé ✅'}</div>`:''}</div>`;
+function detailRowsForExercise(name){
+  const rows=[]; Object.entries(state.history||{}).forEach(([date,day])=>(day.entries||[]).filter(e=>e.nom===name).forEach(e=>rows.push({...e,date})));
+  (state.session.entries||[]).filter(e=>e.nom===name).forEach(e=>rows.push({...e,date:'session'}));
+  return rows.sort((a,b)=>String(a.date).localeCompare(String(b.date))||new Date(a.createdAt||0)-new Date(b.createdAt||0));
+}
+function exerciseRangeStart(){ const d=new Date(); if(exerciseRange==='week') d.setDate(d.getDate()-7); else if(exerciseRange==='month') d.setMonth(d.getMonth()-1); else if(exerciseRange==='year') d.setFullYear(d.getFullYear()-1); else return ''; return d.toISOString().slice(0,10); }
+function detailRowsFiltered(name){ const start=exerciseRangeStart(); return detailRowsForExercise(name).filter(r=>!start||r.date==='session'||r.date>=start); }
+function bestSetForRows(rows){ return rows.length?rows.slice().sort((a,b)=>(Number(b.poids)||0)-(Number(a.poids)||0)||(Number(b.reps)||0)-(Number(a.reps)||0))[0]:null; }
+function rpeAverage(rows){ const r=rows.map(e=>Number(e.rpe)).filter(Boolean); return r.length?Math.round((r.reduce((a,b)=>a+b,0)/r.length)*10)/10:null; }
+function detailPRTimeline(name){ let best=0; return detailRowsForExercise(name).filter(e=>{const w=Number(e.poids)||0; if(w>best){best=w; return true;} return false;}).slice(-8).reverse(); }
+function exerciseDetailView(){
+  const name=exerciseDetailName||selectedMachineName, m=machineByName(name), rows=detailRowsFiltered(name), allRows=detailRowsForExercise(name), ai=progressionAIFor(name);
+  const bestWeight=allRows.length?Math.max(...allRows.map(e=>Number(e.poids)||0)):0, bestRM=allRows.length?Math.max(...allRows.map(e=>Number(e.rm1reel)||oneRM(e.poids,e.reps))):0;
+  const bestSet=bestSetForRows(allRows), avgRpe=rpeAverage(allRows), warm=warmupSuggestionFor(name);
+  setTimeout(renderExerciseChart,0);
+  return `<div class="premium-detail"><section class="detail-hero glass-card"><div class="between"><div><div class="eyebrow">Fiche exercice</div><h2>${m?.icon||'🏋️'} ${esc(name||'Exercice')}</h2><p>Groupe : ${esc(m?.groupe||'—')} · Matériel : Machine</p></div><button class="btn small secondary" data-action="exercise-back">Retour</button></div></section>
+  <div class="detail-tabs"><button class="is-active">Analyse</button><button>Progression</button><button>Historique</button></div>
+  <section class="premium-ai glass-card"><div class="ai-title"><span>🎯 Objectif conseillé</span><h3>${esc(ai.title)}</h3></div><p>${esc(ai.text)}</p><div class="ai-options"><div><b>Option 1</b><strong>${esc(ai.optionA)}</strong></div><div><b>Option 2</b><strong>${esc(ai.optionB)}</strong></div></div></section>
+  <section class="detail-grid"><div class="kpi glass-card"><strong>${bestWeight||'—'}</strong><span>Record kg</span></div><div class="kpi glass-card"><strong>${bestRM||'—'}</strong><span>Meilleur 1RM</span></div><div class="kpi glass-card"><strong>${bestSet?`${bestSet.poids}×${bestSet.reps}`:'—'}</strong><span>Meilleure série</span></div><div class="kpi glass-card"><strong>${avgRpe||'—'}</strong><span>RPE moyen</span></div></section>
+  ${warm?`<section class="analysis-card glass-card"><h3>🔥 Échauffement conseillé</h3><p>${warm}</p></section>`:''}
+  <section class="analysis-card glass-card"><h3>📈 Tendance</h3><p>${esc(ai.signal)} · ${esc(ai.label)}</p><div class="chart-box"><canvas id="exercise-chart"></canvas></div></section>
+  <section class="analysis-card glass-card"><h3>🏆 Timeline records</h3>${detailPRTimeline(name).length?`<div class="pr-list">${detailPRTimeline(name).map(e=>`<div class="pr-item"><span>🏆</span><div><b>${e.poids} kg</b><small>${e.date==='session'?'Séance en cours':esc(e.date)} · ${e.reps} reps</small></div></div>`).join('')}</div>`:`<p class="muted">Aucun record détecté.</p>`}</section>
+  <section class="analysis-card glass-card"><h3>Historique récent</h3>${rows.length?`<div class="list">${rows.slice(-10).reverse().map(e=>`<div class="item between"><div><div class="item-title">${e.poids} kg × ${e.reps}</div><div class="meta">${e.date==='session'?'Séance en cours':esc(e.date)} · série ${e.series}</div></div><span class="badge blue">1RM ${Number(e.rm1reel)||oneRM(e.poids,e.reps)}</span></div>`).join('')}</div>`:`<p class="muted">Pas encore de données.</p>`}</section></div>`;
+}
+function renderExerciseChart(){
+  const canvas=$('#exercise-chart'); if(!canvas||!window.Chart) return; if(detailChart) detailChart.destroy();
+  const rows=detailRowsFiltered(exerciseDetailName||selectedMachineName), muted=getComputedStyle(document.documentElement).getPropertyValue('--muted');
+  const values=rows.map(e=>exerciseMetric==='reps'?Number(e.reps):exerciseMetric==='rm'?(Number(e.rm1reel)||oneRM(e.poids,e.reps)):Number(e.poids));
+  const labels=rows.map(e=>e.date==='session'?'Now':String(e.date).slice(5));
+  detailChart=new Chart(canvas,{type:'line',data:{labels,datasets:[{label:exerciseMetric,data:values,tension:.35,fill:true}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{ticks:{color:muted,maxRotation:0}},y:{ticks:{color:muted}}}}});
 }
 
 function getFollowDraft(name){ return state.ui?.followDrafts?.[name] || null; }
@@ -138,6 +160,16 @@ function templateList(){
 }
 
 function sessionView(){ return `<div class="tabs"><button class="tab ${sessionTab==='muscu'?'is-active':''}" data-action="session-tab" data-tab="muscu">Muscu</button><button class="tab ${sessionTab==='cardio'?'is-active':''}" data-action="session-tab" data-tab="cardio">Cardio</button></div>${sessionTab==='cardio' ? cardioForm() : muscuView()}`; }
+function liveDashboard(){
+  const entries=state.session.entries||[], m=defaultMachine(), name=m?.nom||selectedMachineName;
+  const goal=name?getExerciseGoal(name):null, ai=name?progressionAIFor(name):null;
+  const currentRows=entries.filter(e=>e.nom===name), startedAt=entries.at(-1)?.createdAt;
+  const mins=startedAt?Math.max(1,Math.round((Date.now()-new Date(startedAt).getTime())/60000)):0;
+  const last=currentRows[0], best=maxRepsForWeight(name,Number($('#poids')?.value||formDraft.poids||last?.poids||0));
+  const recordPossible=best&&Number(formDraft.reps)>=best, rest=getTimerFor(name);
+  if(!entries.length&&!state.ui.followMode) return `<section class="premium-focus empty"><div><b>🚀 Prêt</b><span>${goal?`Objectif : ${goal.main}`:'Choisis un exercice et lance ta première série.'}</span></div></section>`;
+  return `<section class="premium-focus"><button class="focus-arrow" data-action="exercise-open" data-name="${esc(name||'')}">›</button><div class="focus-head"><span class="focus-icon">${m?.icon||'🏋️'}</span><div><h2>${esc(name||'Exercice')}</h2><p>${goal?esc(goal.main):'Objectif : démarre proprement'}</p></div></div><div class="focus-pills"><span>⏱ ${mins||'—'} min</span><span>Repos ${rest}s</span><span>${recordPossible?'🔥 Record possible':ai?.signal||'Stable'}</span></div></section>`;
+}
 function muscuView(){
   const m=defaultMachine(); selectedMachineName=m?.nom||selectedMachineName;
   const last=m?lastEntryFor(m.nom):null, followDraft=m?getFollowDraft(m.nom):null;
@@ -145,13 +177,13 @@ function muscuView(){
   const poids=formDraft.poids??activeFollowDraft?.poids??preferredWeight??last?.poids??m?.poids?.[0]??20;
   const series=formDraft.series??activeFollowDraft?.series??1, reps=formDraft.reps??activeFollowDraft?.reps??last?.reps??10;
   const rm=formDraft.rm??activeFollowDraft?.rm??'';
-  return `${liveDashboard()}<div class="desktop-2"><section class="card workout-panel"><div class="field"><label>Groupe musculaire</label><div class="chips"><button class="chip ${groupFilter===''?'is-active':''}" data-group="">Tout</button>${groups().map(g=>`<button class="chip ${groupFilter===g?'is-active':''}" data-group="${esc(g)}">${GROUP_ICONS[g]||'📌'} ${esc(g)}</button>`).join('')}</div></div>
-  <div class="field"><label>Exercice</label><div class="select-row"><select id="machine-select">${filteredMachines().map(x=>`<option value="${esc(x.nom)}" ${x.nom===m?.nom?'selected':''}>${x.icon||'🏋️'} ${esc(x.nom)}</option>`).join('')}</select><button class="btn small" data-action="video-open" title="Vidéo">📹</button><button class="btn small" data-action="machine-edit">✎</button><button class="btn small" data-action="machine-new">+</button></div></div>
-  <div id="machine-hint" class="exercise-insights"></div>
-  <div class="grid-2"><div class="field"><label>Poids</label>${stepper('poids', poids, Number(m?.step||0.5))}</div><div class="field"><label>Série actuelle</label>${stepper('series', series, 1)}</div></div>
+  return `<div class="premium-session">${liveDashboard()}<section class="card premium-form"><div class="field"><label>Groupe musculaire</label><div class="chips">${[''].concat(groups()).map(g=>`<button class="chip ${groupFilter===g?'is-active':''}" data-group="${esc(g)}">${g?(GROUP_ICONS[g]||'📌')+' '+esc(g):'Tout'}</button>`).join('')}</div></div>
+  <div class="field"><label>Exercice</label><div class="select-row premium-select"><select id="machine-select">${filteredMachines().map(x=>`<option value="${esc(x.nom)}" ${x.nom===m?.nom?'selected':''}>${x.icon||'🏋️'} ${esc(x.nom)}</option>`).join('')}</select><button class="btn small" data-action="exercise-open" title="Fiche exercice">📊</button><button class="btn small" data-action="video-open" title="Vidéo">📹</button><button class="btn small" data-action="machine-edit">✎</button><button class="btn small" data-action="machine-new">+</button></div></div>
+  <div id="machine-hint" class="exercise-insights premium-insights"></div>
+  <div class="quick-title">Saisie rapide</div><div class="grid-2"><div class="field"><label>Poids</label>${stepper('poids', poids, Number(m?.step||0.5))}</div><div class="field"><label>Série actuelle</label>${stepper('series', series, 1)}</div></div>
   <div class="grid-2"><div class="field"><label>Reps</label>${stepper('reps', reps, 1)}</div><div class="field"><label>1RM réel optionnel</label><input id="real-rm" type="number" min="0" value="${esc(rm||'')}" placeholder="ex: 120"></div></div>
-  <button class="btn primary full" data-action="entry-add">+ Ajouter la série / exercice</button></section>
-  <section><div class="section-title"><h2>${state.ui.followMode ? `Suivi : ${esc(state.ui.followMode.name)}` : 'Séance en cours'}</h2><button class="btn small danger" data-action="session-clear">Effacer</button></div>${followPanel()}${currentSessionList()}<button class="btn primary full save-session" data-action="session-save">💾 Sauvegarder la séance</button></section></div>`;
+  <button class="btn primary full premium-add" data-action="entry-add">+ Ajouter la série / exercice</button></section>
+  <section class="premium-current"><div class="section-title"><h2>Séance en cours</h2><button class="btn small danger" data-action="session-clear">Effacer</button></div>${followPanel()}${currentSessionList()}<button class="btn primary full save-session" data-action="session-save">💾 Sauvegarder la séance</button></section></div>`;
 }
 function stepper(id, value, step){ return `<div class="stepper"><button data-step-target="${id}" data-step="-${step}">−</button><input id="${id}" type="number" value="${esc(value)}" step="${step}" min="0"><button data-step-target="${id}" data-step="${step}">+</button></div>`; }
 function followPanel(){
@@ -175,7 +207,7 @@ function currentSessionList(){
 function entryCard(e){
   const rm=Number(e.rm1reel)||oneRM(e.poids,e.reps);
   const open = !!state.ui.entryOpen?.[e.id];
-  return `<div class="entry-swipe" data-entry-id="${e.id}"><div class="swipe-delete-bg">Supprimer</div><div class="item entry-item"><button class="entry-head" data-action="entry-toggle" data-id="${e.id}"><div><div class="item-title">${e.icon||''} ${esc(e.nom)}</div><div class="meta">${esc(e.groupe||'')} · série ${e.series} · ${e.reps} reps · ${e.poids} kg</div></div><span class="badge blue">1RM ${rm}</span><span class="chev">${open?'⌄':'›'}</span></button><div class="entry-body ${open?'':'hidden'}"><div class="entry-actions"><button class="btn small" data-action="entry-edit" data-id="${e.id}">Modifier</button><button class="btn small ok" data-action="rest-edit" data-name="${esc(e.nom)}">Repos</button><button class="btn small danger" data-action="entry-delete" data-id="${e.id}">Suppr.</button></div></div></div></div>`;
+  return `<div class="entry-swipe" data-entry-id="${e.id}"><div class="swipe-delete-bg">Supprimer</div><div class="item entry-item"><button class="entry-head" data-action="entry-toggle" data-id="${e.id}"><div><div class="item-title">${e.icon||''} ${esc(e.nom)}</div><div class="meta">${esc(e.groupe||'')} · série ${e.series} · ${e.reps} reps · ${e.poids} kg</div></div><span class="badge blue">1RM ${rm}</span><span class="chev">${open?'⌄':'›'}</span></button><div class="entry-body ${open?'':'hidden'}"><div class="entry-actions"><button class="btn small" data-action="exercise-open" data-name="${esc(e.nom)}">Fiche</button><button class="btn small" data-action="entry-edit" data-id="${e.id}">Modifier</button><button class="btn small ok" data-action="rest-edit" data-name="${esc(e.nom)}">Repos</button><button class="btn small danger" data-action="entry-delete" data-id="${e.id}">Suppr.</button></div></div></div></div>`;
 }
 
 function cardioForm(){ return `<section class="card"><div class="field"><label>Type cardio</label><div class="chips">${['marche','course','velo','escalier'].map(t=>`<button class="chip ${cardioType===t?'is-active':''}" data-cardio-type="${t}">${cardioIcon(t)} ${t}</button>`).join('')}</div></div><div class="grid-3"><div class="field"><label>Durée</label>${stepper('c-duration',20,5)}</div><div class="field"><label>${cardioType==='velo'?'Résistance':cardioType==='escalier'?'Étages':'Vitesse'}</label>${stepper('c-main', cardioType==='velo'?5:cardioType==='escalier'?20:6, cardioType==='velo'||cardioType==='escalier'?1:0.5)}</div><div class="field"><label>${cardioType==='velo'?'RPM':cardioType==='escalier'?'Intensité':'Pente %'}</label>${stepper('c-extra', cardioType==='velo'?80:0, cardioType==='velo'?5:1)}</div></div><button class="btn primary full" data-action="cardio-add">✓ Ajouter cardio</button></section><section><div class="section-title"><h2>Séance en cours</h2></div>${currentSessionList()}</section>`; }
@@ -216,22 +248,14 @@ function renderChart(){
 }
 function settingsView(){ return `<div class="grid"><section class="card"><div class="field"><label>Prénom</label><input id="setting-name" value="${esc(state.settings.userName||'Kevin')}"></div><div class="field"><label>Timer repos par défaut</label><input id="setting-timer" type="number" min="15" step="5" value="${Number(state.settings.timerDefault||60)}"></div><button class="btn primary full" data-action="settings-save">Sauvegarder</button></section><section class="card"><div class="section-title no-margin"><h2>Données</h2></div><button class="btn full" data-action="export-json">Exporter JSON</button><label class="btn full import-label">Importer JSON<input id="import-json" type="file" accept="application/json"></label></section><section class="card danger-zone"><div class="section-title no-margin"><h2>Danger</h2></div><button class="btn danger full" data-action="reset-all">Tout réinitialiser</button></section></div>`; }
 
-function render(){ $('#today-label').textContent=new Date().toLocaleDateString('fr-FR',{day:'numeric',month:'long'}); $('#page-title').textContent=titles[route]||'GymLog'; view.innerHTML = ({home,session:sessionView,history:historyView,stats:statsView,settings:settingsView}[route]||home)(); afterRender(); }
-function afterRender(){ const select=$('#machine-select'); if(select){ select.addEventListener('change', () => { captureForm(); rememberFollowDraft(selectedMachineName); selectedMachineName=select.value; const saved=getFollowDraft(selectedMachineName); const last=lastEntryFor(select.value); const m=machineByName(select.value); formDraft=(state.ui.followMode&&saved) ? {...saved} : {poids:preferredWeightForExercise(select.value) ?? last?.poids ?? m?.poids?.[0] ?? 20, series:1, reps:last?.reps ?? 10, rm:''}; render(); }); updateMachineHint(); } const se=$('#stats-exercise'); if(se) se.addEventListener('change',()=>{selectedMachineName=se.value; render();}); const sm=$('#stats-metric'); if(sm) sm.addEventListener('change',()=>{statsMetric=sm.value; render();}); initSwipeDelete(); }
+function render(){ $('#today-label').textContent=new Date().toLocaleDateString('fr-FR',{day:'numeric',month:'long'}); $('#page-title').textContent=titles[route]||'GymLog'; view.innerHTML = ({home,session:sessionView,history:historyView,stats:statsView,settings:settingsView,exercise:exerciseDetailView}[route]||home)(); afterRender(); }
+function afterRender(){ const select=$('#machine-select'); if(select){ select.addEventListener('change', () => { captureForm(); rememberFollowDraft(selectedMachineName); selectedMachineName=select.value; const saved=getFollowDraft(selectedMachineName); const last=lastEntryFor(select.value); const m=machineByName(select.value); formDraft=saved ? {...saved} : {poids:last?.poids ?? m?.poids?.[0] ?? 20, series:1, reps:last?.reps ?? 10, rm:''}; render(); }); updateMachineHint(); } const se=$('#stats-exercise'); if(se) se.addEventListener('change',()=>{selectedMachineName=se.value; render();}); const sm=$('#stats-metric'); if(sm) sm.addEventListener('change',()=>{statsMetric=sm.value; render();}); initSwipeDelete(); }
 function videoUrl(m){ if(!m?.video) return ''; return m.video.startsWith('http') ? m.video : 'https://youtube.com/watch?v='+m.video; }
 function updateMachineHint(){
-  const m=currentMachine(), el=$('#machine-hint');
-  if(!el) return;
-  if(!m){ el.innerHTML=''; return; }
-  const currentWeight=Number($('#poids')?.value??formDraft.poids??0);
-  const rows=entriesForExercise(m.nom), last=lastEntryFor(m.nom), maxReps=maxRepsForWeight(m.nom,currentWeight);
-  const goal=getExerciseGoal(m.nom), ai=progressionAIFor(m.nom);
-  if(!rows.length){ el.innerHTML=`<div class="insight-empty">Aucun historique pour cet exercice.</div>`; return; }
-  el.innerHTML=`
-    ${goal?`<div class="insight-goal compact ${goal.level||''}"><span>${goal.label||'🎯 Objectif conseillé'}</span><b>${goal.main}</b><em>${esc(goal.reason||ai?.detail||'')}</em></div>`:''}
-    <div class="insight-card"><span>🕒 Dernière fois</span><b>${last?`${last.poids} kg × ${last.reps}`:'—'}</b></div>
-    <div class="insight-card"><span>🔥 Max à ${currentWeight||'—'} kg</span><b>${maxReps?`${maxReps} reps`:'—'}</b></div>
-  `;
+  const m=currentMachine(), el=$('#machine-hint'); if(!el) return; if(!m){el.innerHTML=''; return;}
+  const currentWeight=Number($('#poids')?.value??formDraft.poids??0), rows=entriesForExercise(m.nom), last=lastEntryFor(m.nom), maxReps=maxRepsForWeight(m.nom,currentWeight), ai=progressionAIFor(m.nom);
+  if(!rows.length){ el.innerHTML=`<div class="premium-goal"><span>🎯 Objectif conseillé</span><b>Démarre proprement</b><em>Aucun historique pour cet exercice.</em></div>`; return; }
+  el.innerHTML=`<div class="premium-goal ${ai.level}"><span>${ai.level==='up'?'🟢 Montée possible':'🎯 Objectif conseillé'}</span><b>${esc(ai.optionA||'Objectif propre')}</b><em>${esc(ai.text||'')}</em></div><div class="insight-card"><span>🗓️ Dernière fois</span><b>${last?`${last.poids} kg × ${last.reps}`:'—'}</b></div><div class="insight-card"><span>👑 Max à ${currentWeight||'—'} kg</span><b>${maxReps?`${maxReps} reps`:'—'}</b></div><button class="analysis-link" data-action="exercise-open" data-name="${esc(m.nom)}">📊 Voir analyse complète</button>`;
 }
 function captureForm(){
   if($('#poids')){
@@ -330,6 +354,8 @@ function bindEvents(){ document.addEventListener('click', async e=>{
   if(action==='template-delete' && await confirmModal('Supprimer ce template ?')){ state.templates=state.templates.filter(t=>t.id!==el.dataset.id); persist(); render(); }
   if(action==='follow-pick'){ captureForm(); rememberFollowDraft(selectedMachineName); selectedMachineName=el.dataset.name; const saved=getFollowDraft(selectedMachineName); const last=lastEntryFor(selectedMachineName); formDraft=saved ? {...saved} : {poids:last?.poids ?? machineByName(selectedMachineName)?.poids?.[0] ?? 20, series:1, reps:last?.reps ?? 10, rm:''}; persist(); render(); }
   if(action==='follow-stop'){ state.ui.followMode=null; persist(); render(); }
+  if(action==='exercise-open'){ exerciseDetailName=el.dataset.name || $('#machine-select')?.value || selectedMachineName; selectedMachineName=exerciseDetailName; setRoute('exercise'); }
+  if(action==='exercise-back'){ setRoute('session'); }
   if(action==='machine-new') machineModal(null);
   if(action==='video-open'){ const url=videoUrl(currentMachine()); url ? window.open(url,'_blank') : toast('Aucune vidéo pour cet exercice','warn'); }
   if(action==='machine-edit') machineModal($('#machine-select')?.value);
@@ -337,6 +363,8 @@ function bindEvents(){ document.addEventListener('click', async e=>{
   if(action==='modal-close') $('#modal-root').innerHTML='';
   if(action==='stats-mode'){ statsMode=el.dataset.mode; render(); }
   if(action==='stats-range'){ statsRange=el.dataset.range; render(); }
+  if(action==='exercise-metric'){ exerciseMetric=el.dataset.metric; render(); }
+  if(action==='exercise-range'){ exerciseRange=el.dataset.range; render(); }
   if(action==='bodyweight-add'){ const v=Number($('#body-weight')?.value); if(!v) return toast('Poids invalide','warn'); state.bodyWeight.push({date:todayKey(),weight:v,createdAt:new Date().toISOString()}); persist(); toast('Poids ajouté','ok'); render(); }
   if(action==='settings-save'){ state.settings.userName=$('#setting-name').value.trim()||'Kevin'; state.settings.timerDefault=Number($('#setting-timer').value)||60; persist(); toast('Réglages sauvegardés','ok'); render(); }
   if(action==='export-json') downloadText(`gymlog-backup-${todayKey()}.json`, exportState(state));
