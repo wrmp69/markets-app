@@ -10,14 +10,18 @@ state.templates ||= [];
 state.records ||= {};
 state.timers ||= {};
 state.settings ||= {};
-state.ui ||= { entryOpen: {}, followMode: null };
+state.settings.timerDefault ||= 45;
+state.bodyWeight ||= [];
+state.ui ||= { entryOpen: {}, followMode: null, followScroll: 0 };
 
 let route = 'home';
 let groupFilter = '';
 let sessionTab = 'muscu';
 let cardioType = 'marche';
 let chart = null;
-let statsMode = 'exercise';
+let statsMode = 'trend';
+let statsRange = 'month';
+let statsMetric = 'weight';
 let selectedMachineName = null;
 let formDraft = { poids: null, series: 1, reps: 10, rm: '' };
 
@@ -30,7 +34,7 @@ function groups(){ return [...new Set([...GROUPS, ...allMachines().map(m=>m.grou
 function filteredMachines(){ return groupFilter ? allMachines().filter(m=>m.groupe===groupFilter) : allMachines(); }
 function machineByName(name){ return allMachines().find(m=>m.nom===name); }
 function lastEntryFor(name){ const all=[]; Object.values(state.history||{}).forEach(day=>all.push(...(day.entries||[]))); all.push(...(state.session.entries||[])); return all.reverse().find(e=>e.nom===name); }
-function getTimerFor(name){ return Number(state.timers?.[name] || state.settings.timerDefault || 60); }
+function getTimerFor(name){ return Number(state.timers?.[name] || state.settings.timerDefault || 45); }
 function updateRecords(entry){ const prev=Number(state.records[entry.nom]||0); if(Number(entry.poids)>prev) state.records[entry.nom]=Number(entry.poids); }
 function defaultMachine(){ return machineByName(selectedMachineName) || filteredMachines()[0] || allMachines()[0]; }
 function currentMachine(){ return machineByName($('#machine-select')?.value) || defaultMachine(); }
@@ -66,9 +70,9 @@ function muscuView(){
   const last=m?lastEntryFor(m.nom):null;
   const poids = formDraft.poids ?? last?.poids ?? m?.poids?.[0] ?? 20;
   return `<div class="desktop-2"><section class="card"><div class="field"><label>Groupe musculaire</label><div class="chips"><button class="chip ${groupFilter===''?'is-active':''}" data-group="">Tout</button>${groups().map(g=>`<button class="chip ${groupFilter===g?'is-active':''}" data-group="${esc(g)}">${GROUP_ICONS[g]||'📌'} ${esc(g)}</button>`).join('')}</div></div>
-  <div class="field"><label>Exercice</label><div class="select-row"><select id="machine-select">${filteredMachines().map(x=>`<option value="${esc(x.nom)}" ${x.nom===m?.nom?'selected':''}>${x.icon||'🏋️'} ${esc(x.nom)}</option>`).join('')}</select><button class="btn small" data-action="machine-edit">✎</button><button class="btn small" data-action="machine-new">+</button></div></div>
+  <div class="field"><label>Exercice</label><div class="select-row"><select id="machine-select">${filteredMachines().map(x=>`<option value="${esc(x.nom)}" ${x.nom===m?.nom?'selected':''}>${x.icon||'🏋️'} ${esc(x.nom)}</option>`).join('')}</select><button class="btn small" data-action="video-open" title="Vidéo">📹</button><button class="btn small" data-action="machine-edit">✎</button><button class="btn small" data-action="machine-new">+</button></div></div>
   <div id="machine-hint" class="meta"></div>
-  <div class="grid-2"><div class="field"><label>Poids</label>${stepper('poids', poids, 0.5)}</div><div class="field"><label>Série actuelle</label>${stepper('series', formDraft.series || 1, 1)}</div></div>
+  <div class="grid-2"><div class="field"><label>Poids</label>${stepper('poids', poids, Number(m?.step||0.5))}</div><div class="field"><label>Série actuelle</label>${stepper('series', formDraft.series || 1, 1)}</div></div>
   <div class="grid-2"><div class="field"><label>Reps</label>${stepper('reps', formDraft.reps || last?.reps || 10, 1)}</div><div class="field"><label>1RM réel optionnel</label><input id="real-rm" type="number" min="0" value="${esc(formDraft.rm||'')}" placeholder="ex: 120"></div></div>
   <button class="btn primary full" data-action="entry-add">+ Ajouter la série / exercice</button></section>
   <section><div class="section-title"><h2>${state.ui.followMode ? `Suivi : ${esc(state.ui.followMode.name)}` : 'Séance en cours'}</h2><button class="btn small danger" data-action="session-clear">Effacer</button></div>${followPanel()}${currentSessionList()}<button class="btn primary full save-session" data-action="session-save">💾 Sauvegarder la séance</button></section></div>`;
@@ -77,8 +81,15 @@ function stepper(id, value, step){ return `<div class="stepper"><button data-ste
 function followPanel(){
   const fm=state.ui.followMode;
   if(!fm) return '';
-  const list=(fm.exercises||[]).map((e,i)=>{ const done=(state.session.entries||[]).filter(x=>x.nom===e.nom).length; return `<button class="follow-chip ${selectedMachineName===e.nom?'is-active':''}" data-action="follow-pick" data-name="${esc(e.nom)}"><span>${done?'✅':'○'}</span>${esc(e.nom)} <b>${done}</b></button>`; }).join('');
-  return `<div class="follow-box"><div class="between"><span class="muted small-text">Mode suivi : choisis l’exercice, ajoute tes séries, le timer démarre seul.</span><button class="btn small" data-action="follow-stop">Quitter</button></div><div class="follow-list">${list}</div></div>`;
+  const exercises=fm.exercises||[];
+  const doneCount = name => (state.session.entries||[]).filter(x=>x.nom===name).length;
+  const current = machineByName(selectedMachineName) || machineByName(exercises[0]?.nom);
+  const list=exercises.map((e,i)=>{
+    const done=doneCount(e.nom);
+    const active=selectedMachineName===e.nom;
+    return `<button class="follow-card ${active?'is-active':''}" data-action="follow-pick" data-name="${esc(e.nom)}"><span class="follow-index">${done?'✓':i+1}</span><span><b>${esc(e.nom)}</b><small>${done} série(s) faite(s)</small></span></button>`;
+  }).join('');
+  return `<div class="follow-page"><div class="between"><div><div class="eyebrow">Mode suivi</div><h2>${esc(fm.name)}</h2></div><button class="btn small" data-action="follow-stop">Quitter</button></div><div class="follow-current"><span>${current?.icon||'🏋️'}</span><div><b>Exercice actif</b><strong>${esc(current?.nom||'Choisis un exercice')}</strong><small>${doneCount(current?.nom)} série(s) déjà ajoutée(s)</small></div></div><div class="follow-grid">${list}</div></div>`;
 }
 function currentSessionList(){
   const e=state.session.entries||[], c=state.session.cardio||[];
@@ -88,7 +99,7 @@ function currentSessionList(){
 function entryCard(e){
   const rm=Number(e.rm1reel)||oneRM(e.poids,e.reps);
   const open = !!state.ui.entryOpen?.[e.id];
-  return `<div class="item entry-item"><button class="entry-head" data-action="entry-toggle" data-id="${e.id}"><div><div class="item-title">${e.icon||''} ${esc(e.nom)}</div><div class="meta">${esc(e.groupe||'')} · série ${e.series} · ${e.reps} reps · ${e.poids} kg</div></div><span class="badge blue">1RM ${rm}</span><span class="chev">${open?'⌄':'›'}</span></button><div class="entry-body ${open?'':'hidden'}"><div class="entry-actions"><button class="btn small" data-action="entry-edit" data-id="${e.id}">Modifier</button><button class="btn small ok" data-action="rest-edit" data-name="${esc(e.nom)}">Repos</button><button class="btn small danger" data-action="entry-delete" data-id="${e.id}">Suppr.</button></div></div></div>`;
+  return `<div class="entry-swipe" data-entry-id="${e.id}"><div class="swipe-delete-bg">Supprimer</div><div class="item entry-item"><button class="entry-head" data-action="entry-toggle" data-id="${e.id}"><div><div class="item-title">${e.icon||''} ${esc(e.nom)}</div><div class="meta">${esc(e.groupe||'')} · série ${e.series} · ${e.reps} reps · ${e.poids} kg</div></div><span class="badge blue">1RM ${rm}</span><span class="chev">${open?'⌄':'›'}</span></button><div class="entry-body ${open?'':'hidden'}"><div class="entry-actions"><button class="btn small" data-action="entry-edit" data-id="${e.id}">Modifier</button><button class="btn small ok" data-action="rest-edit" data-name="${esc(e.nom)}">Repos</button><button class="btn small danger" data-action="entry-delete" data-id="${e.id}">Suppr.</button></div></div></div></div>`;
 }
 
 function cardioForm(){ return `<section class="card"><div class="field"><label>Type cardio</label><div class="chips">${['marche','course','velo','escalier'].map(t=>`<button class="chip ${cardioType===t?'is-active':''}" data-cardio-type="${t}">${cardioIcon(t)} ${t}</button>`).join('')}</div></div><div class="grid-3"><div class="field"><label>Durée</label>${stepper('c-duration',20,5)}</div><div class="field"><label>${cardioType==='velo'?'Résistance':cardioType==='escalier'?'Étages':'Vitesse'}</label>${stepper('c-main', cardioType==='velo'?5:cardioType==='escalier'?20:6, cardioType==='velo'||cardioType==='escalier'?1:0.5)}</div><div class="field"><label>${cardioType==='velo'?'RPM':cardioType==='escalier'?'Intensité':'Pente %'}</label>${stepper('c-extra', cardioType==='velo'?80:0, cardioType==='velo'?5:1)}</div></div><button class="btn primary full" data-action="cardio-add">✓ Ajouter cardio</button></section><section><div class="section-title"><h2>Séance en cours</h2></div>${currentSessionList()}</section>`; }
@@ -99,35 +110,40 @@ function dayCard(date, day, deletable){ const entries=day.entries||[], cardio=da
 
 function statsView(){
   setTimeout(renderChart,0);
-  const days=Object.entries(state.history||{}).sort(([a],[b])=>a.localeCompare(b));
-  const entries=days.flatMap(([d,v])=>(v.entries||[]).map(e=>({...e,date:d})));
-  const best=[...entries].sort((a,b)=>(Number(b.rm1reel)||oneRM(b.poids,b.reps))-(Number(a.rm1reel)||oneRM(a.poids,a.reps))).slice(0,5);
-  const frequency = days.slice(-8).map(([d,v])=>`${d.slice(5)} : ${(v.entries||[]).length} exos`).join('<br>') || '—';
-  return `<div class="grid"><div class="grid-3"><div class="kpi"><strong>${days.length}</strong><span>Séances</span></div><div class="kpi"><strong>${entries.length}</strong><span>Exercices</span></div><div class="kpi"><strong>${Math.round(entries.reduce((s,e)=>s+volume(e),0))}</strong><span>Volume</span></div></div>
-  <div class="tabs stats-tabs"><button class="tab ${statsMode==='exercise'?'is-active':''}" data-action="stats-mode" data-mode="exercise">Par exercice</button><button class="tab ${statsMode==='rm'?'is-active':''}" data-action="stats-mode" data-mode="rm">1RM</button><button class="tab ${statsMode==='group'?'is-active':''}" data-action="stats-mode" data-mode="group">Groupes</button></div>
-  <section class="card"><div class="section-title no-margin"><h2>${statsTitle()}</h2></div><div class="chart-box"><canvas id="main-chart"></canvas></div></section>
-  <section><div class="section-title"><h2>Records 1RM</h2></div><div class="list">${best.length?best.map(e=>`<div class="item between"><span>${esc(e.nom)}</span><span class="badge blue">${Number(e.rm1reel)||oneRM(e.poids,e.reps)} kg</span></div>`).join(''):`<div class="empty">Aucune donnée.</div>`}</div></section>
-  <section><div class="section-title"><h2>Fréquence récente</h2></div><div class="item small-text">${frequency}</div></section></div>`;
+  const entries=Object.entries(state.history||{}).flatMap(([d,v])=>(v.entries||[]).map(e=>({...e,date:d})));
+  const names=[...new Set(entries.map(e=>e.nom))].sort();
+  if(!selectedMachineName && names.length) selectedMachineName=names[0];
+  const bodyLast=(state.bodyWeight||[]).at(-1)?.weight || '';
+  return `<div class="grid">
+  <div class="tabs stats-tabs"><button class="tab ${statsMode==='trend'?'is-active':''}" data-action="stats-mode" data-mode="trend">Tendance</button><button class="tab ${statsMode==='rm'?'is-active':''}" data-action="stats-mode" data-mode="rm">1RM</button><button class="tab ${statsMode==='body'?'is-active':''}" data-action="stats-mode" data-mode="body">Poids</button></div>
+  ${statsMode==='body' ? `<section class="card"><div class="field"><label>Ajouter ton poids corporel</label><div class="row"><input id="body-weight" type="number" step="0.1" min="0" value="${esc(bodyLast)}" placeholder="ex: 82.4"><button class="btn primary" data-action="bodyweight-add">Ajouter</button></div></div></section>` : `<section class="card"><div class="grid-2"><div class="field"><label>Exercice</label><select id="stats-exercise">${names.map(n=>`<option value="${esc(n)}" ${n===selectedMachineName?'selected':''}>${esc(n)}</option>`).join('')}</select></div><div class="field"><label>Mesure</label><select id="stats-metric"><option value="weight" ${statsMetric==='weight'?'selected':''}>Poids max</option><option value="reps" ${statsMetric==='reps'?'selected':''}>Reps max</option><option value="rm" ${statsMetric==='rm'?'selected':''}>1RM estimé/réel</option></select></div></div><div class="chips"><button class="chip ${statsRange==='week'?'is-active':''}" data-action="stats-range" data-range="week">Semaine</button><button class="chip ${statsRange==='month'?'is-active':''}" data-action="stats-range" data-range="month">Mois</button><button class="chip ${statsRange==='year'?'is-active':''}" data-action="stats-range" data-range="year">Année</button><button class="chip ${statsRange==='all'?'is-active':''}" data-action="stats-range" data-range="all">Tout</button></div></section>`}
+  <section class="card"><div class="section-title no-margin"><h2>${statsTitle()}</h2></div><div class="chart-box"><canvas id="main-chart"></canvas></div>${statsSummary()}</section>
+  </div>`;
 }
-function statsTitle(){ return statsMode==='rm' ? 'Meilleurs 1RM par exercice' : statsMode==='group' ? 'Volume par groupe' : 'Volume par exercice'; }
+function statsTitle(){ if(statsMode==='body') return 'Évolution du poids corporel'; if(statsMode==='rm') return 'Meilleur 1RM par exercice'; return `Progression ${statsMetric==='reps'?'reps':statsMetric==='rm'?'1RM':'poids'} · ${selectedMachineName||''}`; }
+function rangeStart(){ const d=new Date(); if(statsRange==='week') d.setDate(d.getDate()-7); else if(statsRange==='month') d.setMonth(d.getMonth()-1); else if(statsRange==='year') d.setFullYear(d.getFullYear()-1); else return ''; return d.toISOString().slice(0,10); }
+function getProgressRows(){ const start=rangeStart(); const rows=[]; Object.entries(state.history||{}).sort(([a],[b])=>a.localeCompare(b)).forEach(([date,day])=>{ if(start && date<start) return; (day.entries||[]).filter(e=>e.nom===selectedMachineName).forEach(e=>rows.push({...e,date,value:statsMetric==='reps'?Number(e.reps):statsMetric==='rm'?(Number(e.rm1reel)||oneRM(e.poids,e.reps)):Number(e.poids)})); }); return rows; }
+function statsSummary(){ const rows=statsMode==='body' ? (state.bodyWeight||[]).map(x=>({date:x.date,value:x.weight})) : getProgressRows(); if(!rows.length) return `<div class="empty small-empty">Pas encore assez de données.</div>`; const first=rows[0].value, last=rows.at(-1).value, diff=Math.round((last-first)*10)/10; const cls=diff>=0?'ok':'danger'; return `<div class="trend-line"><span>Début : <b>${first}</b></span><span>Dernier : <b>${last}</b></span><span class="${cls}">Évolution : <b>${diff>0?'+':''}${diff}</b></span></div>`; }
 function renderChart(){
   const canvas=$('#main-chart'); if(!canvas || !window.Chart) return;
   if(chart) chart.destroy();
-  const days=Object.entries(state.history||{});
-  const entries=days.flatMap(([d,v])=>(v.entries||[]).map(e=>({...e,date:d})));
-  const data={};
-  if(statsMode==='group') entries.forEach(e=>data[e.groupe]=(data[e.groupe]||0)+volume(e));
-  else if(statsMode==='rm') entries.forEach(e=>data[e.nom]=Math.max(data[e.nom]||0, Number(e.rm1reel)||oneRM(e.poids,e.reps)));
-  else entries.forEach(e=>data[e.nom]=(data[e.nom]||0)+volume(e));
-  const top=Object.entries(data).sort((a,b)=>b[1]-a[1]).slice(0,8);
-  chart=new Chart(canvas,{type:'bar',data:{labels:top.map(x=>x[0]),datasets:[{label:statsTitle(),data:top.map(x=>Math.round(x[1]))}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{ticks:{display:false}},y:{ticks:{color:getComputedStyle(document.documentElement).getPropertyValue('--muted')}}}}});
+  const muted=getComputedStyle(document.documentElement).getPropertyValue('--muted');
+  let labels=[], values=[];
+  if(statsMode==='rm'){
+    const data={}; Object.values(state.history||{}).forEach(day=>(day.entries||[]).forEach(e=>{ data[e.nom]=Math.max(data[e.nom]||0, Number(e.rm1reel)||oneRM(e.poids,e.reps)); }));
+    const top=Object.entries(data).sort((a,b)=>b[1]-a[1]).slice(0,8); labels=top.map(x=>x[0]); values=top.map(x=>Math.round(x[1]));
+    chart=new Chart(canvas,{type:'bar',data:{labels,datasets:[{label:statsTitle(),data:values}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{ticks:{display:false}},y:{ticks:{color:muted}}}}}); return;
+  }
+  const rows=statsMode==='body' ? (state.bodyWeight||[]).map(x=>({date:x.date,value:Number(x.weight)})) : getProgressRows();
+  labels=rows.map(r=>r.date?.slice(5)||''); values=rows.map(r=>r.value);
+  chart=new Chart(canvas,{type:'line',data:{labels,datasets:[{label:statsTitle(),data:values,tension:.25}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{ticks:{color:muted,maxRotation:0}},y:{ticks:{color:muted}}}}});
 }
-
-function settingsView(){ return `<div class="grid"><section class="card"><div class="field"><label>Prénom</label><input id="setting-name" value="${esc(state.settings.userName||'Kevin')}"></div><div class="field"><label>Timer repos par défaut</label><input id="setting-timer" type="number" min="15" step="5" value="${Number(state.settings.timerDefault||60)}"></div><button class="btn primary full" data-action="settings-save">Sauvegarder</button></section><section class="card"><div class="section-title no-margin"><h2>Données</h2></div><button class="btn full" data-action="export-json">Exporter JSON</button><label class="btn full import-label">Importer JSON<input id="import-json" type="file" accept="application/json"></label></section><section class="card danger-zone"><div class="section-title no-margin"><h2>Danger</h2></div><button class="btn danger full" data-action="reset-all">Tout réinitialiser</button></section></div>`; }
+function settingsView(){ return `<div class="grid"><section class="card"><div class="field"><label>Prénom</label><input id="setting-name" value="${esc(state.settings.userName||'Kevin')}"></div><div class="field"><label>Timer repos par défaut</label><input id="setting-timer" type="number" min="15" step="5" value="${Number(state.settings.timerDefault||45)}"></div><button class="btn primary full" data-action="settings-save">Sauvegarder</button></section><section class="card"><div class="section-title no-margin"><h2>Données</h2></div><button class="btn full" data-action="export-json">Exporter JSON</button><label class="btn full import-label">Importer JSON<input id="import-json" type="file" accept="application/json"></label></section><section class="card danger-zone"><div class="section-title no-margin"><h2>Danger</h2></div><button class="btn danger full" data-action="reset-all">Tout réinitialiser</button></section></div>`; }
 
 function render(){ $('#today-label').textContent=new Date().toLocaleDateString('fr-FR',{day:'numeric',month:'long'}); $('#page-title').textContent=titles[route]||'GymLog'; view.innerHTML = ({home,session:sessionView,history:historyView,stats:statsView,settings:settingsView}[route]||home)(); afterRender(); }
-function afterRender(){ const select=$('#machine-select'); if(select){ select.addEventListener('change', () => { selectedMachineName=select.value; formDraft.series=1; formDraft.rm=''; const last=lastEntryFor(select.value); const m=machineByName(select.value); formDraft.poids=last?.poids ?? m?.poids?.[0] ?? 20; formDraft.reps=last?.reps ?? 10; render(); }); updateMachineHint(); } }
-function updateMachineHint(){ const m=currentMachine(); const last=m?lastEntryFor(m.nom):null; const video=m?.video ? ` · <a class="video-link" target="_blank" href="${m.video.startsWith('http')?m.video:'https://youtube.com/watch?v='+m.video}">vidéo</a>` : ''; const el=$('#machine-hint'); if(el) el.innerHTML = m ? `Poids disponibles : ${m.poids?.length||0}${last?` · dernier : ${last.poids}kg × ${last.reps} · repos ${getTimerFor(m.nom)}s`:''}${video}` : ''; }
+function afterRender(){ const select=$('#machine-select'); if(select){ select.addEventListener('change', () => { selectedMachineName=select.value; formDraft.series=1; formDraft.rm=''; const last=lastEntryFor(select.value); const m=machineByName(select.value); formDraft.poids=last?.poids ?? m?.poids?.[0] ?? 20; formDraft.reps=last?.reps ?? 10; render(); }); updateMachineHint(); } const se=$('#stats-exercise'); if(se) se.addEventListener('change',()=>{selectedMachineName=se.value; render();}); const sm=$('#stats-metric'); if(sm) sm.addEventListener('change',()=>{statsMetric=sm.value; render();}); initSwipeDelete(); }
+function videoUrl(m){ if(!m?.video) return ''; return m.video.startsWith('http') ? m.video : 'https://youtube.com/watch?v='+m.video; }
+function updateMachineHint(){ const m=currentMachine(); const last=m?lastEntryFor(m.nom):null; const el=$('#machine-hint'); if(el) el.innerHTML = m ? `${last?`Dernier : ${last.poids}kg × ${last.reps} · `:''}Repos ${getTimerFor(m.nom)}s · pas ${Number(m.step||0.5)}kg` : ''; }
 function captureForm(){ if($('#poids')) formDraft={poids:Number($('#poids').value)||0, series:Number($('#series').value)||1, reps:Number($('#reps').value)||10, rm:$('#real-rm')?.value||''}; }
 
 function addEntry(){
@@ -152,18 +168,37 @@ async function startFollowTemplate(id){ const t=normalizeTpl(state.templates.fin
 
 function machineModal(existingName=null){
   const m=existingName?machineByName(existingName):currentMachine(); const isCustom=!!state.customMachines.find(x=>x.nom===m?.nom);
-  $('#modal-root').innerHTML=`<div class="modal-backdrop"><div class="modal"><h2>${existingName?'Modifier':'Ajouter'} un exercice</h2><div class="field"><label>Nom</label><input id="mach-name" value="${esc(existingName?m?.nom:'')}"></div><div class="field"><label>Groupe</label><select id="mach-group">${groups().map(g=>`<option value="${esc(g)}" ${m?.groupe===g?'selected':''}>${GROUP_ICONS[g]||'📌'} ${esc(g)}</option>`).join('')}</select></div><div class="field"><label>Icône</label><input id="mach-icon" value="${esc(m?.icon||'🏋️')}"></div><div class="field"><label>Poids disponibles, séparés par virgule</label><textarea id="mach-weights" rows="4">${esc((m?.poids||[20]).join(','))}</textarea></div><div class="field"><label>Vidéo URL ou ID YouTube</label><input id="mach-video" value="${esc(m?.video||'')}"></div><p class="muted small-text">Les exercices de base ne sont pas écrasés : si tu modifies un exercice de base, une version personnalisée sera créée avec le même nom.</p><div class="modal-actions"><button class="btn secondary" data-action="modal-close">Annuler</button><button class="btn primary" data-action="machine-save" data-original="${esc(existingName||'')}">Sauvegarder</button></div></div></div>`;
+  $('#modal-root').innerHTML=`<div class="modal-backdrop"><div class="modal"><h2>${existingName?'Modifier':'Ajouter'} un exercice</h2><div class="field"><label>Nom</label><input id="mach-name" value="${esc(existingName?m?.nom:'')}"></div><div class="field"><label>Groupe</label><select id="mach-group">${groups().map(g=>`<option value="${esc(g)}" ${m?.groupe===g?'selected':''}>${GROUP_ICONS[g]||'📌'} ${esc(g)}</option>`).join('')}</select></div><div class="field"><label>Icône</label><input id="mach-icon" value="${esc(m?.icon||'🏋️')}"></div><div class="grid-2"><div class="field"><label>Poids par défaut</label><input id="mach-weight-default" type="number" step="0.5" value="${esc(m?.poids?.[0]||20)}"></div><div class="field"><label>Pas + / -</label><input id="mach-step" type="number" step="0.5" value="${esc(m?.step||0.5)}"></div></div><div class="field"><label>Vidéo URL ou ID YouTube</label><input id="mach-video" value="${esc(m?.video||'')}"></div><p class="muted small-text">Les exercices de base ne sont pas écrasés : si tu modifies un exercice de base, une version personnalisée sera créée avec le même nom.</p><div class="modal-actions"><button class="btn secondary" data-action="modal-close">Annuler</button><button class="btn primary" data-action="machine-save" data-original="${esc(existingName||'')}">Sauvegarder</button></div></div></div>`;
 }
 function saveMachine(original=''){
   const nom=$('#mach-name').value.trim(); if(!nom) return toast('Nom obligatoire','warn');
-  const poids=$('#mach-weights').value.split(',').map(x=>Number(x.trim())).filter(x=>!Number.isNaN(x)&&x>0).sort((a,b)=>a-b);
-  const item={nom,groupe:$('#mach-group').value,icon:$('#mach-icon').value.trim()||'🏋️',poids:poids.length?poids:[20],video:$('#mach-video').value.trim()};
+  const defaultWeight=Number($('#mach-weight-default').value)||20;
+  const step=Number($('#mach-step').value)||0.5;
+  const item={nom,groupe:$('#mach-group').value,icon:$('#mach-icon').value.trim()||'🏋️',poids:[defaultWeight],step,video:$('#mach-video').value.trim()};
   const idx=state.customMachines.findIndex(x=>x.nom===(original||nom));
   if(idx>=0) state.customMachines[idx]=item; else state.customMachines.push(item);
   selectedMachineName=nom; formDraft={poids:lastEntryFor(nom)?.poids ?? item.poids[0], series:1, reps:lastEntryFor(nom)?.reps ?? 10, rm:''};
   persist(); $('#modal-root').innerHTML=''; toast('Exercice sauvegardé','ok'); render();
 }
-function editEntry(id){ const e=state.session.entries.find(x=>x.id===id); if(!e) return; selectedMachineName=e.nom; formDraft={poids:e.poids,series:e.series,reps:e.reps,rm:e.rm1reel||''}; state.session.entries=state.session.entries.filter(x=>x.id!==id); persist(); render(); toast('Tu peux modifier puis ré-ajouter','ok'); }
+function editEntry(id){
+  const e=state.session.entries.find(x=>x.id===id); if(!e) return;
+  const m=machineByName(e.nom);
+  $('#modal-root').innerHTML=`<div class="modal-backdrop"><div class="modal"><h2>Modifier la série</h2><div class="item no-margin"><div class="item-title">${e.icon||''} ${esc(e.nom)}</div><div class="meta">${esc(e.groupe||'')}</div></div><div class="grid-2"><div class="field"><label>Poids</label>${stepper('edit-poids', e.poids, Number(m?.step||0.5))}</div><div class="field"><label>Série</label>${stepper('edit-series', e.series, 1)}</div></div><div class="grid-2"><div class="field"><label>Reps</label>${stepper('edit-reps', e.reps, 1)}</div><div class="field"><label>1RM réel</label><input id="edit-rm" type="number" value="${esc(e.rm1reel||'')}" placeholder="optionnel"></div></div><div class="modal-actions"><button class="btn secondary" data-action="modal-close">Annuler</button><button class="btn primary" data-action="entry-save-edit" data-id="${id}">Enregistrer</button></div></div></div>`;
+}
+function saveEntryEdit(id){
+  const e=state.session.entries.find(x=>x.id===id); if(!e) return;
+  e.poids=Number($('#edit-poids')?.value)||e.poids; e.series=Number($('#edit-series')?.value)||e.series; e.reps=Number($('#edit-reps')?.value)||e.reps; e.rm1reel=$('#edit-rm')?.value?Number($('#edit-rm').value):null; e.rm1est=oneRM(e.poids,e.reps);
+  updateRecords(e); persist(); $('#modal-root').innerHTML=''; toast('Série modifiée','ok'); render();
+}
+function initSwipeDelete(){
+  $$('.entry-swipe').forEach(wrap=>{
+    let startX=0, dx=0, dragging=false; const card=wrap.querySelector('.entry-item');
+    wrap.onpointerdown=e=>{ if(e.target.closest('button')) return; startX=e.clientX; dx=0; dragging=true; card.style.transition='none'; };
+    wrap.onpointermove=e=>{ if(!dragging) return; dx=e.clientX-startX; if(dx<0){ card.style.transform=`translateX(${Math.max(dx,-115)}px)`; } };
+    wrap.onpointerup=()=>{ if(!dragging) return; dragging=false; card.style.transition='transform .18s ease'; if(dx<-90){ const id=wrap.dataset.entryId; state.session.entries=state.session.entries.filter(x=>x.id!==id); persist(); render(); toast('Série supprimée','ok'); } else card.style.transform=''; };
+    wrap.onpointercancel=()=>{ dragging=false; card.style.transform=''; };
+  });
+}
 async function editRest(name){ const val=prompt(`Temps de repos pour ${name} (secondes)`, getTimerFor(name)); if(val===null) return; const n=Number(val); if(!n || n<5) return toast('Temps invalide','warn'); state.timers[name]=n; persist(); toast('Repos mémorisé','ok'); render(); }
 
 function bindEvents(){ document.addEventListener('click', async e=>{
@@ -177,6 +212,7 @@ function bindEvents(){ document.addEventListener('click', async e=>{
   if(action==='cardio-add') addCardio();
   if(action==='entry-toggle'){ state.ui.entryOpen ||= {}; state.ui.entryOpen[el.dataset.id]=!state.ui.entryOpen[el.dataset.id]; persist(); render(); }
   if(action==='entry-edit') editEntry(el.dataset.id);
+  if(action==='entry-save-edit') saveEntryEdit(el.dataset.id);
   if(action==='rest-edit') editRest(el.dataset.name);
   if(action==='entry-delete'){ state.session.entries=state.session.entries.filter(x=>x.id!==el.dataset.id); persist(); render(); }
   if(action==='cardio-delete'){ state.session.cardio=state.session.cardio.filter(x=>x.id!==el.dataset.id); persist(); render(); }
@@ -191,10 +227,13 @@ function bindEvents(){ document.addEventListener('click', async e=>{
   if(action==='follow-pick'){ selectedMachineName=el.dataset.name; const last=lastEntryFor(selectedMachineName); formDraft={poids:last?.poids ?? machineByName(selectedMachineName)?.poids?.[0] ?? 20, series:1, reps:last?.reps ?? 10, rm:''}; render(); }
   if(action==='follow-stop'){ state.ui.followMode=null; persist(); render(); }
   if(action==='machine-new') machineModal(null);
+  if(action==='video-open'){ const url=videoUrl(currentMachine()); url ? window.open(url,'_blank') : toast('Aucune vidéo pour cet exercice','warn'); }
   if(action==='machine-edit') machineModal($('#machine-select')?.value);
   if(action==='machine-save') saveMachine(el.dataset.original||'');
   if(action==='modal-close') $('#modal-root').innerHTML='';
   if(action==='stats-mode'){ statsMode=el.dataset.mode; render(); }
+  if(action==='stats-range'){ statsRange=el.dataset.range; render(); }
+  if(action==='bodyweight-add'){ const v=Number($('#body-weight')?.value); if(!v) return toast('Poids invalide','warn'); state.bodyWeight.push({date:todayKey(),weight:v,createdAt:new Date().toISOString()}); persist(); toast('Poids ajouté','ok'); render(); }
   if(action==='settings-save'){ state.settings.userName=$('#setting-name').value.trim()||'Kevin'; state.settings.timerDefault=Number($('#setting-timer').value)||60; persist(); toast('Réglages sauvegardés','ok'); render(); }
   if(action==='export-json') downloadText(`gymlog-backup-${todayKey()}.json`, exportState(state));
   if(action==='reset-all' && await confirmModal('Tout supprimer définitivement ?')){ resetAll(); state=loadState(); setTheme('dark'); setRoute('home'); toast('Application réinitialisée','ok'); }
@@ -205,6 +244,6 @@ function bindEvents(){ document.addEventListener('click', async e=>{
 }
 
 setTheme(state.settings.theme || 'dark');
-initTimer(()=>state.settings.timerDefault||60);
+initTimer(()=>state.settings.timerDefault||45);
 bindEvents();
 render();
