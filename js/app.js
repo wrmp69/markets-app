@@ -481,16 +481,50 @@ function bodyZoneStats(){
     return {...z,stats,worst,sets,vol,ago:ago===999?null:ago};
   });
 }
+function humanZoneClass(z){ return `human-zone tone-${z?.worst?.tone||'empty'}`; }
+function bodyHumanSvg(zones){
+  const byId=Object.fromEntries(zones.map(z=>[z.id,z]));
+  const attrs=id=>`class="${humanZoneClass(byId[id])}" data-action="body-focus" data-groups="${esc((byId[id]?.groups||[]).join('|'))}" role="button" tabindex="0"`;
+  const label=id=>esc(byId[id]?.label||'');
+  return `<svg class="body-human-svg" viewBox="0 0 320 430" aria-label="Carte musculaire interactive">
+    <defs>
+      <filter id="humanGlow" x="-60%" y="-60%" width="220%" height="220%"><feGaussianBlur stdDeviation="3" result="blur"/><feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+      <linearGradient id="bodyBase" x1="0" x2="1" y1="0" y2="1"><stop offset="0" stop-color="rgba(255,255,255,.16)"/><stop offset="1" stop-color="rgba(255,255,255,.035)"/></linearGradient>
+    </defs>
+    <text class="human-caption" x="88" y="24" text-anchor="middle">Face</text>
+    <text class="human-caption" x="232" y="24" text-anchor="middle">Dos</text>
+
+    <g class="human-base front" aria-hidden="true">
+      <circle cx="88" cy="52" r="22"/>
+      <path d="M72 80 Q88 90 104 80 L116 112 Q124 158 117 202 Q111 238 104 286 L100 382 Q98 404 84 404 Q76 404 76 381 L74 295 Q72 274 68 274 Q64 274 62 295 L60 381 Q60 404 48 404 Q35 404 36 382 L42 286 Q36 238 29 202 Q22 158 30 112 Z"/>
+      <path d="M30 113 Q11 148 14 201 Q16 244 28 244 Q39 244 35 202 Q33 161 51 126 Z"/>
+      <path d="M116 113 Q135 148 132 201 Q130 244 118 244 Q107 244 111 202 Q113 161 95 126 Z"/>
+    </g>
+
+    <g class="human-base back" aria-hidden="true">
+      <circle cx="232" cy="52" r="22"/>
+      <path d="M216 80 Q232 90 248 80 L262 112 Q270 158 263 202 Q255 238 248 286 L244 382 Q242 404 228 404 Q220 404 220 381 L218 295 Q216 274 212 274 Q208 274 206 295 L204 381 Q204 404 192 404 Q179 404 180 382 L186 286 Q178 238 171 202 Q164 158 172 112 Z"/>
+      <path d="M172 113 Q153 148 156 201 Q158 244 170 244 Q181 244 177 202 Q175 161 193 126 Z"/>
+      <path d="M262 113 Q281 148 278 201 Q276 244 264 244 Q253 244 257 202 Q259 161 241 126 Z"/>
+    </g>
+
+    <g ${attrs('shoulders')} aria-label="${label('shoulders')}"><path d="M30 112 Q50 86 72 91 L67 122 Q47 119 30 136 Z"/><path d="M104 91 Q126 86 146 112 L146 136 Q129 119 109 122 Z"/><path d="M174 112 Q194 86 216 91 L211 122 Q191 119 174 136 Z"/><path d="M248 91 Q270 86 290 112 L290 136 Q273 119 253 122 Z"/><title>${label('shoulders')}</title></g>
+    <g ${attrs('chest')} aria-label="${label('chest')}"><path d="M52 118 Q70 105 86 122 L86 166 Q61 162 45 145 Z"/><path d="M90 122 Q106 105 124 118 L131 145 Q115 162 90 166 Z"/><title>${label('chest')}</title></g>
+    <g ${attrs('back')} aria-label="${label('back')}"><path d="M194 112 Q232 92 270 112 Q261 174 246 218 Q232 230 218 218 Q203 174 194 112 Z"/><path d="M207 122 Q232 139 257 122" class="human-line"/><path d="M216 206 Q232 184 248 206" class="human-line"/><title>${label('back')}</title></g>
+    <g ${attrs('arms')} aria-label="${label('arms')}"><path d="M25 139 Q11 170 17 231 Q21 253 31 246 Q37 240 34 213 Q30 175 45 145 Z"/><path d="M131 139 Q145 170 139 231 Q135 253 125 246 Q119 240 122 213 Q126 175 111 145 Z"/><path d="M169 139 Q155 170 161 231 Q165 253 175 246 Q181 240 178 213 Q174 175 189 145 Z"/><path d="M275 139 Q289 170 283 231 Q279 253 269 246 Q263 240 266 213 Q270 175 255 145 Z"/><title>${label('arms')}</title></g>
+    <g ${attrs('core')} aria-label="${label('core')}"><path d="M61 172 Q88 184 115 172 L109 245 Q88 258 67 245 Z"/><path d="M74 188 H102 M72 211 H104 M70 234 H106" class="human-line"/><title>${label('core')}</title></g>
+    <g ${attrs('legs')} aria-label="${label('legs')}"><path d="M48 265 Q68 252 78 274 L76 383 Q69 401 58 388 L56 303 Q55 285 48 265 Z"/><path d="M98 265 Q78 252 68 274 L70 383 Q77 401 88 388 L90 303 Q91 285 98 265 Z"/><path d="M192 265 Q212 252 222 274 L220 383 Q213 401 202 388 L200 303 Q199 285 192 265 Z"/><path d="M242 265 Q222 252 212 274 L214 383 Q221 401 232 388 L234 303 Q235 285 242 265 Z"/><title>${label('legs')}</title></g>
+  </svg>`;
+}
 function renderBodyMap(){
   const zones=bodyZoneStats();
   const late=zones.filter(z=>['danger','late'].includes(z.worst?.tone));
   const hot=zones.filter(z=>['hot','loaded'].includes(z.worst?.tone));
   const headline=late[0]?`${late[0].label} à relancer`:hot[0]?`${hot[0].label} déjà chargé`:'Répartition correcte';
   const rows=zones.map(z=>`<button class="body-row ${z.worst?.tone||'empty'}" data-action="body-focus" data-groups="${esc(z.groups.join('|'))}"><span>${esc(z.label)}</span><b>${esc(z.worst?.status||'—')}</b><small>${z.sets} série(s) · ${z.ago===null?'jamais':`J-${z.ago}`}</small></button>`).join('');
-  const zoneButtons=zones.map(z=>`<button class="body-zone ${z.id} ${z.worst?.tone||'empty'}" data-action="body-focus" data-groups="${esc(z.groups.join('|'))}"><span>${esc(z.label)}</span></button>`).join('');
-  return `<section class="bodymap-card card"><div class="section-title no-margin"><div><div class="eyebrow">Vue corps humain</div><h2>Récupération musculaire</h2></div><span class="body-score">${esc(headline)}</span></div><div class="bodymap-layout"><div class="body-figure"><div class="body-core-shape"></div>${zoneButtons}</div><div class="body-list">${rows}</div></div><p class="muted small-text body-help">Couleurs : néon = prêt, orange = chargé, rouge = en retard. Clique un groupe pour le détail.</p></section>`;
+  return `<section class="bodymap-card human-card card"><div class="section-title no-margin"><div><div class="eyebrow">Vue corps humain</div><h2>Récupération musculaire</h2></div><span class="body-score">${esc(headline)}</span></div><div class="bodymap-layout human-layout"><div class="body-figure human-figure">${bodyHumanSvg(zones)}</div><div class="body-list">${rows}</div></div><p class="muted small-text body-help">Clique directement une zone du corps. Néon = prêt, orange = chargé, rouge = en retard.</p></section>`;
 }
-function openBodyFocus(groupsStr=''){
+function openBodyFocusfunction openBodyFocus(groupsStr=''){
   const selected=String(groupsStr).split('|').filter(Boolean);
   const stats=selected.map(g=>muscleStats(g,30));
   const title=selected.join(' / ')||'Groupe musculaire';
