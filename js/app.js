@@ -12,6 +12,7 @@ state.timers ||= {};
 state.settings ||= {};
 state.settings.timerDefault ||= 60;
 state.bodyWeight ||= [];
+state.rpeLog ||= {};
 state.ui ||= { entryOpen: {}, followMode: null, followScroll: 0 };
 
 let route = 'home';
@@ -19,13 +20,17 @@ let groupFilter = '';
 let sessionTab = 'muscu';
 let cardioType = 'marche';
 let chart = null;
+let detailChart = null;
 let statsMode = 'trend';
 let statsRange = 'month';
 let statsMetric = 'weight';
 let selectedMachineName = null;
-let formDraft = { poids: null, series: 1, reps: 10, rm: '' };
+let exerciseDetailName = null;
+let exerciseRange = 'all';
+let exerciseMetric = 'weight';
+let formDraft = { poids: null, series: 1, reps: 10, rm: '', rpe: '' };
 
-const titles = {home:'Accueil', session:'Séance', history:'Historique', stats:'Stats', settings:'Réglages'};
+const titles = {home:'Accueil', session:'Séance', history:'Historique', stats:'Stats', settings:'Réglages', exercise:'Fiche exercice'};
 const view = $('#view');
 
 function persist(){ saveState(state); }
@@ -38,33 +43,240 @@ function entriesForExercise(name){ const all=[]; Object.values(state.history||{}
 function maxWeightFor(name){ const rows=entriesForExercise(name); return rows.length ? Math.max(...rows.map(e=>Number(e.poids)||0)) : null; }
 function maxRepsForWeight(name, poids){ const p=Number(poids); const rows=entriesForExercise(name).filter(e=>Number(e.poids)===p); return rows.length ? Math.max(...rows.map(e=>Number(e.reps)||0)) : null; }
 
-function getExerciseGoal(name, currentWeight){
+function latestWorkoutEntriesFor(name){
+  const buckets = [];
+
+  const currentRows = (state.session.entries || [])
+    .filter(e => e.nom === name && Number(e.poids) > 0 && Number(e.reps) > 0);
+
+  if(currentRows.length){
+    buckets.push({ date:'session', rows: currentRows });
+  }
+
+  Object.entries(state.history || {}).forEach(([date, day]) => {
+    const rows = (day.entries || [])
+      .filter(e => e.nom === name && Number(e.poids) > 0 && Number(e.reps) > 0);
+    if(rows.length) buckets.push({ date, rows });
+  });
+
+  if(!buckets.length) return [];
+
+  buckets.sort((a,b) => {
+    if(a.date === 'session') return 1;
+    if(b.date === 'session') return -1;
+    return a.date.localeCompare(b.date);
+  });
+
+  return buckets.at(-1).rows
+    .slice()
+    .sort((a,b) => (Number(a.series)||0) - (Number(b.series)||0) || new Date(a.createdAt || 0) - new Date(b.createdAt || 0));
+}
+
+function preferredWeightForExercise(name){
+  const latest = latestWorkoutEntriesFor(name);
+  if(latest.length){
+    return Math.max(...latest.map(e => Number(e.poids) || 0));
+  }
+  const max = maxWeightFor(name);
+  return max || null;
+}
+
+function getExerciseGoal(name){
+  const latest = latestWorkoutEntriesFor(name);
+  if(!latest.length) return null;
+
+  const machine = machineByName(name);
+  const step = Number(machine?.step || 2.5);
+  const targetWeight = Math.max(...latest.map(e => Number(e.poids) || 0));
+  const rowsAtTarget = latest.filter(e => Number(e.poids) === targetWeight);
+  const baseRows = rowsAtTarget.length ? rowsAtTarget : latest;
+
+  const repsBySet = baseRows.map(e => Number(e.reps) || 0).filter(Boolean);
+  const sets = repsBySet.length || latest.length;
+  const maxReps = Math.max(...repsBySet);
+  const targetReps = repsBySet.map((r, i) => i === repsBySet.length - 1 ? r + 1 : r);
+  const heavierTarget = Math.round((targetWeight + step) * 10) / 10;
+
+  return {
+    main: `${targetWeight} kg · ${targetReps.join(' / ')} reps`,
+    alt: maxReps >= 10 ? `${heavierTarget} kg · ${Math.max(5, Math.round(maxReps * 0.75))} reps` : null,
+    reason: `Dernière séance : ${sets} série${sets > 1 ? 's' : ''} à ${targetWeight} kg (${repsBySet.join(' / ')} reps)`
+  };
+}
+
+function warmupSuggestionFor(name){
+  const goal = getExerciseGoal(name);
+  if(!goal) return null;
+  const target = Number(String(goal.main).match(/([\d.]+)\s*kg/)?.[1] || 0);
+  if(!target || target < 10) return null;
+  const round = v => Math.round(v * 2) / 2;
+  const sets = [
+    { poids: Math.max(2.5, round(target * 0.4)), reps: 12 },
+    { poids: Math.max(2.5, round(target * 0.6)), reps: 8 },
+    { poids: Math.max(2.5, round(target * 0.8)), reps: 4 }
+  ].filter((s, i, arr) => i === 0 || s.poids > arr[i - 1].poids);
+  return sets.map(s => `${s.poids}×${s.reps}`).join(' · ');
+}
+
+function progressionAdviceFor(name){
   const rows = entriesForExercise(name)
     .filter(e => Number(e.poids) > 0 && Number(e.reps) > 0)
     .sort((a,b) => new Date(a.createdAt || 0) - new Date(b.createdAt || 0));
-
-  if(!rows.length) return null;
-
-  const last = rows.at(-1);
-  const p = Number(currentWeight || last.poids || 0);
-  const bestAtCurrent = maxRepsForWeight(name, p);
+  if(rows.length < 3) return null;
+  const last = latestWorkoutEntriesFor(name);
+  if(!last.length) return null;
   const machine = machineByName(name);
   const step = Number(machine?.step || 2.5);
-  const heavierTarget = Math.round((p + step) * 10) / 10;
-
-  if(bestAtCurrent){
-    return {
-      main: `${p} kg × ${bestAtCurrent + 1}`,
-      alt: `${heavierTarget} kg × ${Math.max(5, Math.round(bestAtCurrent * 0.75))}`,
-      reason: `Battre ton record à ${p} kg`
-    };
+  const targetWeight = Math.max(...last.map(e => Number(e.poids) || 0));
+  const recentAtWeight = rows.filter(e => Number(e.poids) === targetWeight).slice(-6);
+  const goodSets = recentAtWeight.filter(e => Number(e.reps) >= 10).length;
+  const lastRpe = [...rows].reverse().find(e => e.rpe)?.rpe;
+  if(goodSets >= 3 && (!lastRpe || Number(lastRpe) <= 8)){
+    return `Tu valides souvent ${targetWeight} kg : prochaine étape possible ${Math.round((targetWeight + step)*10)/10} kg.`;
   }
+  if(lastRpe && Number(lastRpe) >= 9){
+    return `Dernier ressenti dur (RPE ${lastRpe}) : garde le même poids et vise une rep propre.`;
+  }
+  return `Garde le poids cible et essaie d’ajouter 1 rep sur la dernière série.`;
+}
 
-  return {
-    main: `${last.poids} kg × ${Number(last.reps) + 1}`,
-    alt: Number(last.reps) >= 12 ? `${Math.round((Number(last.poids) + step) * 10) / 10} kg × 8` : null,
-    reason: `Progression depuis ta dernière séance`
-  };
+function muscleBalance(daysBack=30){
+  const start = new Date(); start.setDate(start.getDate()-daysBack);
+  const counts = {};
+  Object.entries(state.history||{}).forEach(([date, day]) => {
+    if(new Date(date+'T00:00:00') < start) return;
+    (day.entries||[]).forEach(e => counts[e.groupe || 'Autres'] = (counts[e.groupe || 'Autres'] || 0) + 1);
+  });
+  (state.session.entries||[]).forEach(e => counts[e.groupe || 'Autres'] = (counts[e.groupe || 'Autres'] || 0) + 1);
+  return counts;
+}
+
+function renderMuscleBalance(){
+  const data = muscleBalance(30);
+  const total = Object.values(data).reduce((a,b)=>a+b,0);
+  if(!total) return `<section class="card"><div class="section-title no-margin"><h2>Équilibre musculaire</h2></div><div class="empty small-empty">Pas encore assez de données sur 30 jours.</div></section>`;
+  const rows = Object.entries(data).sort((a,b)=>b[1]-a[1]).map(([g,n]) => {
+    const pct = Math.round(n/total*100);
+    return `<div class="balance-row"><span>${GROUP_ICONS[g]||'📌'} ${esc(g)}</span><b>${n} série(s)</b><div class="balance-bar"><i style="width:${pct}%"></i></div><small>${pct}%</small></div>`;
+  }).join('');
+  const sorted = Object.entries(data).sort((a,b)=>b[1]-a[1]);
+  const msg = sorted.length > 1 && sorted[0][1] >= sorted.at(-1)[1]*2 ? `Attention : beaucoup plus de ${sorted[0][0]} que de ${sorted.at(-1)[0]}.` : `Répartition correcte sur les groupes travaillés.`;
+  return `<section class="card"><div class="section-title no-margin"><h2>Équilibre musculaire · 30 jours</h2></div><div class="balance-list">${rows}</div><p class="coach-note">${esc(msg)}</p></section>`;
+}
+
+function renderHeatmap(){
+  const set = new Set(Object.entries(state.history||{}).filter(([,d]) => (d.entries||[]).length || (d.cardio||[]).length).map(([date]) => date));
+  if((state.session.entries||[]).length || (state.session.cardio||[]).length) set.add(todayKey());
+  const today = new Date(todayKey()+'T00:00:00');
+  const cells = [];
+  let activeDays = 0;
+  for(let i=55;i>=0;i--){
+    const d = new Date(today); d.setDate(today.getDate()-i);
+    const key = d.toISOString().slice(0,10);
+    const on = set.has(key);
+    if(on) activeDays += 1;
+    cells.push(`<span class="heat-cell ${on?'on':''}" title="${key}"></span>`);
+  }
+  const rate = Math.round(activeDays / 56 * 100);
+  return `<section class="card"><div class="section-title no-margin"><h2>Régularité</h2><span class="badge ac">${rate}%</span></div><div class="heatmap">${cells.join('')}</div><p class="muted small-text">Chaque carré représente un jour d’entraînement sur les 8 dernières semaines.</p></section>`;
+}
+
+function prTimeline(){
+  const best = {};
+  const events = [];
+  Object.entries(state.history||{}).sort(([a],[b])=>a.localeCompare(b)).forEach(([date, day]) => {
+    (day.entries||[]).forEach(e => {
+      const w = Number(e.poids)||0;
+      if(w > (best[e.nom]||0)){
+        best[e.nom] = w;
+        events.push({date, nom:e.nom, poids:w, reps:e.reps, icon:e.icon});
+      }
+    });
+  });
+  return events.slice(-8).reverse();
+}
+
+function renderPRTimeline(){
+  const events = prTimeline();
+  if(!events.length) return `<section class="card"><div class="section-title no-margin"><h2>PR timeline</h2></div><div class="empty small-empty">Aucun record détecté pour l’instant.</div></section>`;
+  return `<section class="card"><div class="section-title no-margin"><h2>PR timeline</h2></div><div class="pr-list">${events.map(e=>`<div class="pr-item"><span>${e.icon||'🏆'}</span><div><b>${esc(e.nom)}</b><small>${esc(e.date)} · ${e.poids} kg × ${e.reps}</small></div></div>`).join('')}</div></section>`;
+}
+
+function detailRowsForExercise(name){
+  const rows=[];
+  Object.entries(state.history||{}).forEach(([date,day])=>(day.entries||[]).filter(e=>e.nom===name).forEach(e=>rows.push({...e,date})));
+  (state.session.entries||[]).filter(e=>e.nom===name).forEach(e=>rows.push({...e,date:'session'}));
+  return rows.sort((a,b)=>String(a.date).localeCompare(String(b.date))||new Date(a.createdAt||0)-new Date(b.createdAt||0));
+}
+function exerciseRangeStart(){
+  const d=new Date();
+  if(exerciseRange==='week') d.setDate(d.getDate()-7);
+  else if(exerciseRange==='month') d.setMonth(d.getMonth()-1);
+  else if(exerciseRange==='year') d.setFullYear(d.getFullYear()-1);
+  else return '';
+  return d.toISOString().slice(0,10);
+}
+function detailRowsFiltered(name){
+  const start=exerciseRangeStart();
+  return detailRowsForExercise(name).filter(r=>!start||r.date==='session'||r.date>=start);
+}
+function bestSetForRows(rows){
+  if(!rows.length) return null;
+  return rows.slice().sort((a,b)=>(Number(b.poids)||0)-(Number(a.poids)||0)||(Number(b.reps)||0)-(Number(a.reps)||0))[0];
+}
+function rpeAverage(rows){
+  const r=rows.map(e=>Number(e.rpe)).filter(Boolean);
+  return r.length?Math.round((r.reduce((a,b)=>a+b,0)/r.length)*10)/10:null;
+}
+function detailPRTimeline(name){
+  let best=0;
+  return detailRowsForExercise(name).filter(e=>{
+    const w=Number(e.poids)||0;
+    if(w>best){ best=w; return true; }
+    return false;
+  }).slice(-8).reverse();
+}
+function exerciseDetailView(){
+  const name=exerciseDetailName||selectedMachineName;
+  const m=machineByName(name);
+  const rows=detailRowsFiltered(name);
+  const allRows=detailRowsForExercise(name);
+  const bestWeight=allRows.length?Math.max(...allRows.map(e=>Number(e.poids)||0)):0;
+  const bestRM=allRows.length?Math.max(...allRows.map(e=>Number(e.rm1reel)||oneRM(e.poids,e.reps))):0;
+  const bestSet=bestSetForRows(allRows);
+  const avgRpe=rpeAverage(allRows);
+  const goal=getExerciseGoal(name);
+  const warm=warmupSuggestionFor(name);
+  const advice=progressionAdviceFor(name);
+  setTimeout(renderExerciseChart,0);
+  return `<div class="grid">
+    <section class="card exercise-hero">
+      <div class="between"><div><div class="eyebrow">Fiche exercice</div><h2>${m?.icon||'🏋️'} ${esc(name||'Exercice')}</h2><p>${esc(m?.groupe||'')}</p></div><button class="btn small secondary" data-action="exercise-back">Retour</button></div>
+    </section>
+    <section class="exercise-kpis">
+      <div class="kpi"><strong>${bestWeight||'—'}</strong><span>Record kg</span></div>
+      <div class="kpi"><strong>${bestRM||'—'}</strong><span>Meilleur 1RM</span></div>
+      <div class="kpi"><strong>${bestSet?`${bestSet.poids}×${bestSet.reps}`:'—'}</strong><span>Meilleure série</span></div>
+      <div class="kpi"><strong>${avgRpe||'—'}</strong><span>RPE moyen</span></div>
+    </section>
+    <section class="card">${goal?`<div class="detail-goal"><span>🎯 Objectif</span><b>${goal.main}</b>${goal.alt?`<small>Option lourde : ${goal.alt}</small>`:''}<em>${goal.reason}</em></div>`:''}${warm?`<div class="detail-line"><span>🔥 Échauffement</span><b>${warm}</b></div>`:''}${advice?`<div class="detail-line"><span>🧠 Conseil</span><b>${esc(advice)}</b></div>`:''}</section>
+    <section class="card"><div class="section-title no-margin"><h2>Progression</h2></div>
+      <div class="chips"><button class="chip ${exerciseMetric==='weight'?'is-active':''}" data-action="exercise-metric" data-metric="weight">Poids</button><button class="chip ${exerciseMetric==='reps'?'is-active':''}" data-action="exercise-metric" data-metric="reps">Reps</button><button class="chip ${exerciseMetric==='rm'?'is-active':''}" data-action="exercise-metric" data-metric="rm">1RM</button></div>
+      <div class="chips detail-ranges"><button class="chip ${exerciseRange==='week'?'is-active':''}" data-action="exercise-range" data-range="week">7j</button><button class="chip ${exerciseRange==='month'?'is-active':''}" data-action="exercise-range" data-range="month">30j</button><button class="chip ${exerciseRange==='year'?'is-active':''}" data-action="exercise-range" data-range="year">1 an</button><button class="chip ${exerciseRange==='all'?'is-active':''}" data-action="exercise-range" data-range="all">Tout</button></div>
+      <div class="chart-box"><canvas id="exercise-chart"></canvas></div>
+    </section>
+    <section class="card"><div class="section-title no-margin"><h2>Timeline records</h2></div>${detailPRTimeline(name).length?`<div class="pr-list">${detailPRTimeline(name).map(e=>`<div class="pr-item"><span>🏆</span><div><b>${e.poids} kg</b><small>${e.date==='session'?'Séance en cours':esc(e.date)} · ${e.reps} reps${e.rpe?` · RPE ${e.rpe}`:''}</small></div></div>`).join('')}</div>`:`<div class="empty small-empty">Aucun record détecté.</div>`}</section>
+    <section class="card"><div class="section-title no-margin"><h2>Historique récent</h2></div>${rows.length?`<div class="list">${rows.slice(-12).reverse().map(e=>`<div class="item between"><div><div class="item-title">${e.poids} kg × ${e.reps}</div><div class="meta">${e.date==='session'?'Séance en cours':esc(e.date)} · série ${e.series}${e.rpe?` · RPE ${e.rpe}`:''}</div></div><span class="badge blue">1RM ${Number(e.rm1reel)||oneRM(e.poids,e.reps)}</span></div>`).join('')}</div>`:`<div class="empty small-empty">Pas encore de données.</div>`}</section>
+  </div>`;
+}
+function renderExerciseChart(){
+  const canvas=$('#exercise-chart'); if(!canvas||!window.Chart) return;
+  if(detailChart) detailChart.destroy();
+  const rows=detailRowsFiltered(exerciseDetailName||selectedMachineName);
+  const muted=getComputedStyle(document.documentElement).getPropertyValue('--muted');
+  const values=rows.map(e=>exerciseMetric==='reps'?Number(e.reps):exerciseMetric==='rm'?(Number(e.rm1reel)||oneRM(e.poids,e.reps)):Number(e.poids));
+  const labels=rows.map(e=>e.date==='session'?'Now':String(e.date).slice(5));
+  detailChart=new Chart(canvas,{type:'line',data:{labels,datasets:[{label:exerciseMetric,data:values,tension:.25}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{ticks:{color:muted,maxRotation:0}},y:{ticks:{color:muted}}}}});
 }
 function getFollowDraft(name){ return state.ui?.followDrafts?.[name] || null; }
 function rememberFollowDraft(name=selectedMachineName){ if(!state.ui?.followMode || !name) return; state.ui.followDrafts ||= {}; state.ui.followDrafts[name] = {...formDraft}; }
@@ -98,20 +310,55 @@ function templateList(){
 }
 
 function sessionView(){ return `<div class="tabs"><button class="tab ${sessionTab==='muscu'?'is-active':''}" data-action="session-tab" data-tab="muscu">Muscu</button><button class="tab ${sessionTab==='cardio'?'is-active':''}" data-action="session-tab" data-tab="cardio">Cardio</button></div>${sessionTab==='cardio' ? cardioForm() : muscuView()}`; }
+function liveDashboard(){
+  const entries=state.session.entries||[], m=defaultMachine();
+  const name=m?.nom||selectedMachineName, goal=name?getExerciseGoal(name):null;
+  const currentRows=entries.filter(e=>e.nom===name);
+  const startedAt=entries.at(-1)?.createdAt;
+  const mins=startedAt?Math.max(1,Math.round((Date.now()-new Date(startedAt).getTime())/60000)):0;
+  const last=currentRows[0], best=maxRepsForWeight(name,Number($('#poids')?.value||formDraft.poids||last?.poids||0));
+  const recordPossible=best&&Number(formDraft.reps)>=best;
+  const rpeAvg=currentRows.length?Math.round(currentRows.reduce((s,e)=>s+Number(e.rpe||0),0)/currentRows.filter(e=>e.rpe).length||0):0;
+  const fatigue=rpeAvg>=9?'🔴 Très dur':rpeAvg>=8?'🟠 Fatigue':currentRows.length>=4?'🟡 Déjà chargé':'🟢 Frais';
+  const fm=state.ui.followMode, remaining=fm?(fm.exercises||[]).map(x=>x.nom).filter(n=>entries.filter(e=>e.nom===n).length<3):[];
+  const rest=getTimerFor(name);
+
+  if(!entries.length&&!fm){
+    return `<div class="coach-dashboard"><div class="coach-main"><b>🚀 Prêt</b><span>Choisis un exercice et lance ta première série.</span></div></div>`;
+  }
+
+  return `<div class="coach-dashboard">
+    <div class="coach-main">
+      <b>🏋️ ${esc(name||'Exercice')}</b>
+      <span>${goal?`Objectif : ${goal.main}`:'Objectif : démarre proprement'}</span>
+    </div>
+    <div class="coach-grid">
+      <div><span>⏱ Temps</span><b>${mins||'—'} min</b></div>
+      <div><span>Repos</span><b>${rest}s</b></div>
+      <div><span>État</span><b>${fatigue}</b></div>
+      <div><span>Signal</span><b>${recordPossible?'🔥 Record possible':'—'}</b></div>
+    </div>
+    ${fm?`<div class="coach-note">📋 Restant : ${remaining.length?remaining.slice(0,3).map(esc).join(', '):'template terminé ✅'}</div>`:''}
+  </div>`;
+}
 function muscuView(){
   const m=defaultMachine();
   selectedMachineName = m?.nom || selectedMachineName;
   const last=m?lastEntryFor(m.nom):null;
   const followDraft = m ? getFollowDraft(m.nom) : null;
- const poids = formDraft.poids ?? followDraft?.poids ?? last?.poids ?? m?.poids?.[0] ?? 20;
- const series = formDraft.series ?? followDraft?.series ?? 1;
- const reps = formDraft.reps ?? followDraft?.reps ?? last?.reps ?? 10;
- const rm = formDraft.rm ?? followDraft?.rm ?? '';
-  return `<div class="desktop-2"><section class="card"><div class="field"><label>Groupe musculaire</label><div class="chips"><button class="chip ${groupFilter===''?'is-active':''}" data-group="">Tout</button>${groups().map(g=>`<button class="chip ${groupFilter===g?'is-active':''}" data-group="${esc(g)}">${GROUP_ICONS[g]||'📌'} ${esc(g)}</button>`).join('')}</div></div>
-  <div class="field"><label>Exercice</label><div class="select-row"><select id="machine-select">${filteredMachines().map(x=>`<option value="${esc(x.nom)}" ${x.nom===m?.nom?'selected':''}>${x.icon||'🏋️'} ${esc(x.nom)}</option>`).join('')}</select><button class="btn small" data-action="video-open" title="Vidéo">📹</button><button class="btn small" data-action="machine-edit">✎</button><button class="btn small" data-action="machine-new">+</button></div></div>
+ const activeFollowDraft = state.ui.followMode ? followDraft : null;
+ const preferredWeight = m ? preferredWeightForExercise(m.nom) : null;
+ const poids = formDraft.poids ?? activeFollowDraft?.poids ?? preferredWeight ?? last?.poids ?? m?.poids?.[0] ?? 20;
+ const series = formDraft.series ?? activeFollowDraft?.series ?? 1;
+ const reps = formDraft.reps ?? activeFollowDraft?.reps ?? last?.reps ?? 10;
+ const rm = formDraft.rm ?? activeFollowDraft?.rm ?? '';
+ const rpe = formDraft.rpe ?? activeFollowDraft?.rpe ?? '';
+  return `${liveDashboard()}<div class="desktop-2"><section class="card"><div class="field"><label>Groupe musculaire</label><div class="chips"><button class="chip ${groupFilter===''?'is-active':''}" data-group="">Tout</button>${groups().map(g=>`<button class="chip ${groupFilter===g?'is-active':''}" data-group="${esc(g)}">${GROUP_ICONS[g]||'📌'} ${esc(g)}</button>`).join('')}</div></div>
+  <div class="field"><label>Exercice</label><div class="select-row"><select id="machine-select">${filteredMachines().map(x=>`<option value="${esc(x.nom)}" ${x.nom===m?.nom?'selected':''}>${x.icon||'🏋️'} ${esc(x.nom)}</option>`).join('')}</select><button class="btn small" data-action="exercise-open" title="Fiche exercice">📊</button><button class="btn small" data-action="video-open" title="Vidéo">📹</button><button class="btn small" data-action="machine-edit">✎</button><button class="btn small" data-action="machine-new">+</button></div></div>
   <div id="machine-hint" class="exercise-insights"></div>
   <div class="grid-2"><div class="field"><label>Poids</label>${stepper('poids', poids, Number(m?.step||0.5))}</div><div class="field"><label>Série actuelle</label>${stepper('series', series, 1)}</div></div>
   <div class="grid-2"><div class="field"><label>Reps</label>${stepper('reps', reps, 1)}</div><div class="field"><label>1RM réel optionnel</label><input id="real-rm" type="number" min="0" value="${esc(rm||'')}" placeholder="ex: 120"></div></div>
+  <div class="field"><label>Ressenti / RPE</label><div class="rpe-chips">${[6,7,8,9,10].map(n=>`<button type="button" class="rpe-chip ${Number(rpe)===n?'is-active':''}" data-rpe="${n}">${n}</button>`).join('')}<button type="button" class="rpe-chip ${!rpe?'is-active':''}" data-rpe="">—</button></div></div>
   <button class="btn primary full" data-action="entry-add">+ Ajouter la série / exercice</button></section>
   <section><div class="section-title"><h2>${state.ui.followMode ? `Suivi : ${esc(state.ui.followMode.name)}` : 'Séance en cours'}</h2><button class="btn small danger" data-action="session-clear">Effacer</button></div>${followPanel()}${currentSessionList()}<button class="btn primary full save-session" data-action="session-save">💾 Sauvegarder la séance</button></section></div>`;
 }
@@ -137,7 +384,7 @@ function currentSessionList(){
 function entryCard(e){
   const rm=Number(e.rm1reel)||oneRM(e.poids,e.reps);
   const open = !!state.ui.entryOpen?.[e.id];
-  return `<div class="entry-swipe" data-entry-id="${e.id}"><div class="swipe-delete-bg">Supprimer</div><div class="item entry-item"><button class="entry-head" data-action="entry-toggle" data-id="${e.id}"><div><div class="item-title">${e.icon||''} ${esc(e.nom)}</div><div class="meta">${esc(e.groupe||'')} · série ${e.series} · ${e.reps} reps · ${e.poids} kg</div></div><span class="badge blue">1RM ${rm}</span><span class="chev">${open?'⌄':'›'}</span></button><div class="entry-body ${open?'':'hidden'}"><div class="entry-actions"><button class="btn small" data-action="entry-edit" data-id="${e.id}">Modifier</button><button class="btn small ok" data-action="rest-edit" data-name="${esc(e.nom)}">Repos</button><button class="btn small danger" data-action="entry-delete" data-id="${e.id}">Suppr.</button></div></div></div></div>`;
+  return `<div class="entry-swipe" data-entry-id="${e.id}"><div class="swipe-delete-bg">Supprimer</div><div class="item entry-item"><button class="entry-head" data-action="entry-toggle" data-id="${e.id}"><div><div class="item-title">${e.icon||''} ${esc(e.nom)}</div><div class="meta">${esc(e.groupe||'')} · série ${e.series} · ${e.reps} reps · ${e.poids} kg${e.rpe ? ` · RPE ${e.rpe}` : ''}</div></div><span class="badge blue">1RM ${rm}</span><span class="chev">${open?'⌄':'›'}</span></button><div class="entry-body ${open?'':'hidden'}"><div class="entry-actions"><button class="btn small" data-action="exercise-open" data-name="${esc(e.nom)}">Fiche</button><button class="btn small" data-action="entry-edit" data-id="${e.id}">Modifier</button><button class="btn small ok" data-action="rest-edit" data-name="${esc(e.nom)}">Repos</button><button class="btn small danger" data-action="entry-delete" data-id="${e.id}">Suppr.</button></div></div></div></div>`;
 }
 
 function cardioForm(){ return `<section class="card"><div class="field"><label>Type cardio</label><div class="chips">${['marche','course','velo','escalier'].map(t=>`<button class="chip ${cardioType===t?'is-active':''}" data-cardio-type="${t}">${cardioIcon(t)} ${t}</button>`).join('')}</div></div><div class="grid-3"><div class="field"><label>Durée</label>${stepper('c-duration',20,5)}</div><div class="field"><label>${cardioType==='velo'?'Résistance':cardioType==='escalier'?'Étages':'Vitesse'}</label>${stepper('c-main', cardioType==='velo'?5:cardioType==='escalier'?20:6, cardioType==='velo'||cardioType==='escalier'?1:0.5)}</div><div class="field"><label>${cardioType==='velo'?'RPM':cardioType==='escalier'?'Intensité':'Pente %'}</label>${stepper('c-extra', cardioType==='velo'?80:0, cardioType==='velo'?5:1)}</div></div><button class="btn primary full" data-action="cardio-add">✓ Ajouter cardio</button></section><section><div class="section-title"><h2>Séance en cours</h2></div>${currentSessionList()}</section>`; }
@@ -156,6 +403,9 @@ function statsView(){
   <div class="tabs stats-tabs"><button class="tab ${statsMode==='trend'?'is-active':''}" data-action="stats-mode" data-mode="trend">Tendance</button><button class="tab ${statsMode==='rm'?'is-active':''}" data-action="stats-mode" data-mode="rm">1RM</button><button class="tab ${statsMode==='body'?'is-active':''}" data-action="stats-mode" data-mode="body">Poids</button></div>
   ${statsMode==='body' ? `<section class="card"><div class="field"><label>Ajouter ton poids corporel</label><div class="row"><input id="body-weight" type="number" step="0.1" min="0" value="${esc(bodyLast)}" placeholder="ex: 82.4"><button class="btn primary" data-action="bodyweight-add">Ajouter</button></div></div></section>` : `<section class="card"><div class="grid-2"><div class="field"><label>Exercice</label><select id="stats-exercise">${names.map(n=>`<option value="${esc(n)}" ${n===selectedMachineName?'selected':''}>${esc(n)}</option>`).join('')}</select></div><div class="field"><label>Mesure</label><select id="stats-metric"><option value="weight" ${statsMetric==='weight'?'selected':''}>Poids max</option><option value="reps" ${statsMetric==='reps'?'selected':''}>Reps max</option><option value="rm" ${statsMetric==='rm'?'selected':''}>1RM estimé/réel</option></select></div></div><div class="chips"><button class="chip ${statsRange==='week'?'is-active':''}" data-action="stats-range" data-range="week">Semaine</button><button class="chip ${statsRange==='month'?'is-active':''}" data-action="stats-range" data-range="month">Mois</button><button class="chip ${statsRange==='year'?'is-active':''}" data-action="stats-range" data-range="year">Année</button><button class="chip ${statsRange==='all'?'is-active':''}" data-action="stats-range" data-range="all">Tout</button></div></section>`}
   <section class="card"><div class="section-title no-margin"><h2>${statsTitle()}</h2></div><div class="chart-box"><canvas id="main-chart"></canvas></div>${statsSummary()}</section>
+  ${renderHeatmap()}
+  ${renderMuscleBalance()}
+  ${renderPRTimeline()}
   </div>`;
 }
 function statsTitle(){ if(statsMode==='body') return 'Évolution du poids corporel'; if(statsMode==='rm') return 'Meilleur 1RM par exercice'; return `Progression ${statsMetric==='reps'?'reps':statsMetric==='rm'?'1RM':'poids'} · ${selectedMachineName||''}`; }
@@ -178,8 +428,8 @@ function renderChart(){
 }
 function settingsView(){ return `<div class="grid"><section class="card"><div class="field"><label>Prénom</label><input id="setting-name" value="${esc(state.settings.userName||'Kevin')}"></div><div class="field"><label>Timer repos par défaut</label><input id="setting-timer" type="number" min="15" step="5" value="${Number(state.settings.timerDefault||60)}"></div><button class="btn primary full" data-action="settings-save">Sauvegarder</button></section><section class="card"><div class="section-title no-margin"><h2>Données</h2></div><button class="btn full" data-action="export-json">Exporter JSON</button><label class="btn full import-label">Importer JSON<input id="import-json" type="file" accept="application/json"></label></section><section class="card danger-zone"><div class="section-title no-margin"><h2>Danger</h2></div><button class="btn danger full" data-action="reset-all">Tout réinitialiser</button></section></div>`; }
 
-function render(){ $('#today-label').textContent=new Date().toLocaleDateString('fr-FR',{day:'numeric',month:'long'}); $('#page-title').textContent=titles[route]||'GymLog'; view.innerHTML = ({home,session:sessionView,history:historyView,stats:statsView,settings:settingsView}[route]||home)(); afterRender(); }
-function afterRender(){ const select=$('#machine-select'); if(select){ select.addEventListener('change', () => { captureForm(); rememberFollowDraft(selectedMachineName); selectedMachineName=select.value; const saved=getFollowDraft(selectedMachineName); const last=lastEntryFor(select.value); const m=machineByName(select.value); formDraft=saved ? {...saved} : {poids:last?.poids ?? m?.poids?.[0] ?? 20, series:1, reps:last?.reps ?? 10, rm:''}; render(); }); updateMachineHint(); } const se=$('#stats-exercise'); if(se) se.addEventListener('change',()=>{selectedMachineName=se.value; render();}); const sm=$('#stats-metric'); if(sm) sm.addEventListener('change',()=>{statsMetric=sm.value; render();}); initSwipeDelete(); }
+function render(){ $('#today-label').textContent=new Date().toLocaleDateString('fr-FR',{day:'numeric',month:'long'}); $('#page-title').textContent=titles[route]||'GymLog'; view.innerHTML = ({home,session:sessionView,history:historyView,stats:statsView,settings:settingsView,exercise:exerciseDetailView}[route]||home)(); afterRender(); }
+function afterRender(){ const select=$('#machine-select'); if(select){ select.addEventListener('change', () => { captureForm(); rememberFollowDraft(selectedMachineName); selectedMachineName=select.value; const saved=getFollowDraft(selectedMachineName); const last=lastEntryFor(select.value); const m=machineByName(select.value); formDraft=(state.ui.followMode && saved) ? {...saved} : {poids:preferredWeightForExercise(select.value) ?? last?.poids ?? m?.poids?.[0] ?? 20, series:1, reps:last?.reps ?? 10, rm:''}; render(); }); updateMachineHint(); } const se=$('#stats-exercise'); if(se) se.addEventListener('change',()=>{selectedMachineName=se.value; render();}); const sm=$('#stats-metric'); if(sm) sm.addEventListener('change',()=>{statsMetric=sm.value; render();}); initSwipeDelete(); }
 function videoUrl(m){ if(!m?.video) return ''; return m.video.startsWith('http') ? m.video : 'https://youtube.com/watch?v='+m.video; }
 function updateMachineHint(){
   const m=currentMachine();
@@ -192,7 +442,9 @@ function updateMachineHint(){
   const bestRM = rows.length ? Math.max(...rows.map(e=>Number(e.rm1reel)||oneRM(e.poids,e.reps))) : null;
   const last = lastEntryFor(m.nom);
   const maxReps = maxRepsForWeight(m.nom, currentWeight);
-  const goal = getExerciseGoal(m.nom, currentWeight);
+  const goal = getExerciseGoal(m.nom);
+  const warmup = warmupSuggestionFor(m.nom);
+  const advice = progressionAdviceFor(m.nom);
 
   if(!rows.length){
     el.innerHTML = `<div class="insight-empty">Aucun historique pour cet exercice.</div>`;
@@ -212,11 +464,13 @@ function updateMachineHint(){
         <em>${goal.reason}</em>
       </div>
     ` : ''}
+    ${warmup ? `<div class="insight-extra"><span>🔥 Échauffement</span><b>${warmup}</b></div>` : ''}
+    ${advice ? `<div class="insight-extra"><span>🧠 Progression</span><b>${esc(advice)}</b></div>` : ''}
   `;
 }
 function captureForm(){
   if($('#poids')){
-    formDraft={poids:Number($('#poids').value)||0, series:Number($('#series').value)||1, reps:Number($('#reps').value)||10, rm:$('#real-rm')?.value||''};
+    formDraft={poids:Number($('#poids').value)||0, series:Number($('#series').value)||1, reps:Number($('#reps').value)||10, rm:$('#real-rm')?.value||'', rpe:formDraft.rpe||''};
     rememberFollowDraft();
     updateMachineHint();
   }
@@ -226,7 +480,7 @@ function addEntry(){
   const m=currentMachine(); if(!m) return toast('Choisis un exercice','warn'); captureForm();
   const previousMaxWeight = maxWeightFor(m.nom);
   const previousMaxRepsAtWeight = maxRepsForWeight(m.nom, formDraft.poids);
-  const entry={id:uid(),nom:m.nom,groupe:m.groupe,icon:m.icon,poids:formDraft.poids,series:formDraft.series||1,reps:formDraft.reps||1,rm1reel:formDraft.rm?Number(formDraft.rm):null,createdAt:new Date().toISOString()};
+  const entry={id:uid(),nom:m.nom,groupe:m.groupe,icon:m.icon,poids:formDraft.poids,series:formDraft.series||1,reps:formDraft.reps||1,rm1reel:formDraft.rm?Number(formDraft.rm):null,rpe:formDraft.rpe||null,createdAt:new Date().toISOString()};
   entry.rm1est=oneRM(entry.poids,entry.reps); state.session.entries.unshift(entry); updateRecords(entry);
   const weightRecord = previousMaxWeight !== null && Number(entry.poids) > Number(previousMaxWeight);
   const repsRecord = previousMaxRepsAtWeight !== null && Number(entry.reps) > Number(previousMaxRepsAtWeight);
@@ -249,7 +503,7 @@ function createTemplateModal(existingId=null){
   $('#modal-root').innerHTML=`<div class="modal-backdrop"><div class="modal"><h2>${existing?'Modifier':'Nouveau'} template</h2><div class="field"><label>Nom</label><input id="tpl-name" value="${esc(existing?.name||'')}" placeholder="Push day"></div><div class="field"><label>Exercices</label><select id="tpl-exos" multiple size="10">${options}</select></div><p class="muted small-text">Ctrl/clic sur PC pour plusieurs choix. Sur mobile, sélectionne puis sauvegarde.</p><div class="modal-actions"><button class="btn secondary" data-action="modal-close">Annuler</button><button class="btn primary" data-action="template-save" data-id="${existingId||''}">${existing?'Enregistrer':'Créer'}</button></div></div></div>`;
 }
 function saveTemplate(id=null){ const name=$('#tpl-name')?.value.trim(); const selected=$$('#tpl-exos option:checked').map(o=>o.value); if(!name || !selected.length) return toast('Nom + exercices obligatoires','warn'); const tpl={id:id||uid(),name,exercises:selected.map(n=>({nom:n,series:3,reps:10,poids:lastEntryFor(n)?.poids || machineByName(n)?.poids?.[0] || 20}))}; if(id){ state.templates=state.templates.map(t=>t.id===id?tpl:t); } else state.templates.push(tpl); persist(); $('#modal-root').innerHTML=''; toast('Template sauvegardé','ok'); render(); }
-async function startFollowTemplate(id){ const t=normalizeTpl(state.templates.find(x=>x.id===id)||{}); if(!t.exercises?.length) return; if(state.session.entries.length && !await confirmModal('Charger ce template en mode suivi ? La séance en cours sera conservée.')) return; state.ui.followMode={id:t.id,name:t.name,exercises:t.exercises}; state.ui.followDrafts ||= {}; selectedMachineName=t.exercises[0].nom; const saved=getFollowDraft(selectedMachineName); const last=lastEntryFor(selectedMachineName); formDraft=saved ? {...saved} : {poids:last?.poids ?? machineByName(selectedMachineName)?.poids?.[0] ?? 20, series:1, reps:last?.reps ?? 10, rm:''}; persist(); setRoute('session'); }
+async function startFollowTemplate(id){ const t=normalizeTpl(state.templates.find(x=>x.id===id)||{}); if(!t.exercises?.length) return; if(state.session.entries.length && !await confirmModal('Charger ce template en mode suivi ? La séance en cours sera conservée.')) return; state.ui.followMode={id:t.id,name:t.name,exercises:t.exercises}; state.ui.followDrafts = {}; selectedMachineName=t.exercises[0].nom; const last=lastEntryFor(selectedMachineName); formDraft={poids:preferredWeightForExercise(selectedMachineName) ?? last?.poids ?? machineByName(selectedMachineName)?.poids?.[0] ?? 20, series:1, reps:last?.reps ?? 10, rm:''}; persist(); setRoute('session'); }
 
 function machineModal(existingName=null){
   const m=existingName?machineByName(existingName):currentMachine(); const isCustom=!!state.customMachines.find(x=>x.nom===m?.nom);
@@ -268,11 +522,11 @@ function saveMachine(original=''){
 function editEntry(id){
   const e=state.session.entries.find(x=>x.id===id); if(!e) return;
   const m=machineByName(e.nom);
-  $('#modal-root').innerHTML=`<div class="modal-backdrop"><div class="modal"><h2>Modifier la série</h2><div class="item no-margin"><div class="item-title">${e.icon||''} ${esc(e.nom)}</div><div class="meta">${esc(e.groupe||'')}</div></div><div class="grid-2"><div class="field"><label>Poids</label>${stepper('edit-poids', e.poids, Number(m?.step||0.5))}</div><div class="field"><label>Série</label>${stepper('edit-series', e.series, 1)}</div></div><div class="grid-2"><div class="field"><label>Reps</label>${stepper('edit-reps', e.reps, 1)}</div><div class="field"><label>1RM réel</label><input id="edit-rm" type="number" value="${esc(e.rm1reel||'')}" placeholder="optionnel"></div></div><div class="modal-actions"><button class="btn secondary" data-action="modal-close">Annuler</button><button class="btn primary" data-action="entry-save-edit" data-id="${id}">Enregistrer</button></div></div></div>`;
+  $('#modal-root').innerHTML=`<div class="modal-backdrop"><div class="modal"><h2>Modifier la série</h2><div class="item no-margin"><div class="item-title">${e.icon||''} ${esc(e.nom)}</div><div class="meta">${esc(e.groupe||'')}</div></div><div class="grid-2"><div class="field"><label>Poids</label>${stepper('edit-poids', e.poids, Number(m?.step||0.5))}</div><div class="field"><label>Série</label>${stepper('edit-series', e.series, 1)}</div></div><div class="grid-2"><div class="field"><label>Reps</label>${stepper('edit-reps', e.reps, 1)}</div><div class="field"><label>1RM réel</label><input id="edit-rm" type="number" value="${esc(e.rm1reel||'')}" placeholder="optionnel"></div></div><div class="field"><label>RPE</label><select id="edit-rpe"><option value="">—</option>${[6,7,8,9,10].map(n=>`<option value="${n}" ${Number(e.rpe)===n?'selected':''}>${n}</option>`).join('')}</select></div><div class="modal-actions"><button class="btn secondary" data-action="modal-close">Annuler</button><button class="btn primary" data-action="entry-save-edit" data-id="${id}">Enregistrer</button></div></div></div>`;
 }
 function saveEntryEdit(id){
   const e=state.session.entries.find(x=>x.id===id); if(!e) return;
-  e.poids=Number($('#edit-poids')?.value)||e.poids; e.series=Number($('#edit-series')?.value)||e.series; e.reps=Number($('#edit-reps')?.value)||e.reps; e.rm1reel=$('#edit-rm')?.value?Number($('#edit-rm').value):null; e.rm1est=oneRM(e.poids,e.reps);
+  e.poids=Number($('#edit-poids')?.value)||e.poids; e.series=Number($('#edit-series')?.value)||e.series; e.reps=Number($('#edit-reps')?.value)||e.reps; e.rm1reel=$('#edit-rm')?.value?Number($('#edit-rm').value):null; e.rpe=$('#edit-rpe')?.value || null; e.rm1est=oneRM(e.poids,e.reps);
   updateRecords(e); persist(); $('#modal-root').innerHTML=''; toast('Série modifiée','ok'); render();
 }
 function initSwipeDelete(){
@@ -291,6 +545,7 @@ function bindEvents(){ document.addEventListener('click', async e=>{
   const group=e.target.closest('[data-group]'); if(group){ captureForm(); groupFilter=group.dataset.group; const m=filteredMachines()[0]; selectedMachineName=m?.nom || null; formDraft.series=1; formDraft.poids=null; return render(); }
   const ctype=e.target.closest('[data-cardio-type]'); if(ctype){ cardioType=ctype.dataset.cardioType; return render(); }
   const step=e.target.closest('[data-step-target]'); if(step){ const input=$('#'+step.dataset.stepTarget); input.value=String(Math.max(Number(input.min||0), (Number(input.value)||0)+Number(step.dataset.step))); captureForm(); return; }
+  const rpeBtn=e.target.closest('[data-rpe]'); if(rpeBtn){ formDraft.rpe=rpeBtn.dataset.rpe; render(); return; }
   const el=e.target.closest('[data-action]'); const action=el?.dataset.action; if(!action) return;
   if(action==='session-tab'){ sessionTab=el.dataset.tab; render(); }
   if(action==='entry-add') addEntry();
@@ -309,12 +564,16 @@ function bindEvents(){ document.addEventListener('click', async e=>{
   if(action==='template-save') saveTemplate(el.dataset.id || null);
   if(action==='template-follow') startFollowTemplate(el.dataset.id);
   if(action==='template-delete' && await confirmModal('Supprimer ce template ?')){ state.templates=state.templates.filter(t=>t.id!==el.dataset.id); persist(); render(); }
-  if(action==='follow-pick'){ captureForm(); rememberFollowDraft(selectedMachineName); selectedMachineName=el.dataset.name; const saved=getFollowDraft(selectedMachineName); const last=lastEntryFor(selectedMachineName); formDraft=saved ? {...saved} : {poids:last?.poids ?? machineByName(selectedMachineName)?.poids?.[0] ?? 20, series:1, reps:last?.reps ?? 10, rm:''}; persist(); render(); }
+  if(action==='follow-pick'){ captureForm(); rememberFollowDraft(selectedMachineName); selectedMachineName=el.dataset.name; const saved=getFollowDraft(selectedMachineName); const last=lastEntryFor(selectedMachineName); formDraft=saved ? {...saved} : {poids:preferredWeightForExercise(selectedMachineName) ?? last?.poids ?? machineByName(selectedMachineName)?.poids?.[0] ?? 20, series:1, reps:last?.reps ?? 10, rm:''}; persist(); render(); }
   if(action==='follow-stop'){ state.ui.followMode=null; persist(); render(); }
   if(action==='machine-new') machineModal(null);
   if(action==='video-open'){ const url=videoUrl(currentMachine()); url ? window.open(url,'_blank') : toast('Aucune vidéo pour cet exercice','warn'); }
   if(action==='machine-edit') machineModal($('#machine-select')?.value);
   if(action==='machine-save') saveMachine(el.dataset.original||'');
+  if(action==='exercise-open'){ exerciseDetailName=el.dataset.name||$('#machine-select')?.value||selectedMachineName; selectedMachineName=exerciseDetailName; setRoute('exercise'); }
+  if(action==='exercise-back'){ setRoute('session'); }
+  if(action==='exercise-range'){ exerciseRange=el.dataset.range; render(); }
+  if(action==='exercise-metric'){ exerciseMetric=el.dataset.metric; render(); }
   if(action==='modal-close') $('#modal-root').innerHTML='';
   if(action==='stats-mode'){ statsMode=el.dataset.mode; render(); }
   if(action==='stats-range'){ statsRange=el.dataset.range; render(); }
