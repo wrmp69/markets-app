@@ -439,6 +439,67 @@ function cardioItem(c){ return `<div class="item between"><div><div class="item-
 function historyView(){ const days=Object.entries(state.history||{}).sort(([a],[b])=>b.localeCompare(a)); return days.length ? `<div class="list">${days.map(([d,v])=>dayCard(d,v,true)).join('')}</div>` : `<div class="empty">Pas encore d’historique.</div>`; }
 function dayCard(date, day, deletable){ const entries=day.entries||[], cardio=day.cardio||[]; const vol=entries.reduce((s,e)=>s+volume(e),0); return `<article class="item"><div class="between"><div><div class="item-title">${fmtDateLong(date)}</div><div class="meta">${entries.length} exercice(s) · ${cardio.length} cardio · ${Math.round(vol)} kg</div></div>${deletable?`<button class="btn small danger" data-action="day-delete" data-date="${date}">Suppr.</button>`:''}</div><div class="list day-mini">${entries.slice(0,8).map(e=>`<div class="between"><span class="small-text">${esc(e.nom)}</span><span class="badge ac">${e.series}×${e.reps} · ${e.poids}kg</span></div>`).join('')}${cardio.map(c=>`<div class="between"><span class="small-text">${esc(c.type)}</span><span class="badge purple">${c.duration}min</span></div>`).join('')}</div></article>`; }
 
+
+function datedWorkoutRows(){
+  const rows=[];
+  Object.entries(state.history||{}).forEach(([date,day])=>(day.entries||[]).forEach(e=>rows.push({...e,date})));
+  (state.session.entries||[]).forEach(e=>rows.push({...e,date:todayKey(),live:true}));
+  return rows.filter(e=>e.groupe&&Number(e.poids)>0&&Number(e.reps)>0);
+}
+function daysSince(date){ if(!date) return null; return Math.max(0,Math.floor((new Date(todayKey()+'T00:00:00')-new Date(date+'T00:00:00'))/86400000)); }
+function muscleStats(group,days=30){
+  const start=new Date(todayKey()+'T00:00:00'); start.setDate(start.getDate()-days); const startKey=start.toISOString().slice(0,10);
+  const rows=datedWorkoutRows().filter(e=>e.groupe===group), recent=rows.filter(e=>e.date>=startKey);
+  const last=rows.slice().sort((a,b)=>String(a.date).localeCompare(String(b.date))).at(-1);
+  const ago=last?daysSince(last.date):null, sets=recent.length, vol=recent.reduce((s,e)=>s+volume(e),0);
+  let tone='empty', status='À construire', advice='Ajoute quelques séries pour créer une base fiable.';
+  if(ago!==null){
+    if(ago<=1){ tone='hot'; status='Très sollicité'; advice='Garde une marge, ou travaille un autre groupe.'; }
+    else if(ago<=3){ tone='loaded'; status='En récupération'; advice='Possible, mais évite de forcer un record.'; }
+    else if(ago<=6){ tone='ready'; status='Prêt'; advice='Bon moment pour le retravailler.'; }
+    else if(ago<=10){ tone='late'; status='À relancer'; advice='Une séance modérée serait utile.'; }
+    else { tone='danger'; status='En retard'; advice='Priorité haute si c’est un groupe important pour toi.'; }
+  }
+  const score=ago===null?0:Math.max(0,Math.min(100,Math.round(100-(Math.max(0,ago-4)*9)+(sets>16?-14:sets>10?-6:4))));
+  return {group,rows,recent,last,ago,sets,vol,tone,status,advice,score};
+}
+function bodyZoneStats(){
+  const zones=[
+    {id:'chest',label:'Pectoraux',groups:['Pectoraux']},
+    {id:'back',label:'Dos',groups:['Dos']},
+    {id:'shoulders',label:'Épaules',groups:['Épaules']},
+    {id:'arms',label:'Bras',groups:['Biceps','Triceps','Avant-bras'].filter(g=>groups().includes(g))},
+    {id:'core',label:'Core',groups:['Abdos','Gainage'].filter(g=>groups().includes(g))},
+    {id:'legs',label:'Jambes',groups:['Jambes']}
+  ].filter(z=>z.groups.length);
+  const toneRank={danger:5,late:4,ready:3,loaded:2,hot:1,empty:0};
+  return zones.map(z=>{
+    const stats=z.groups.map(g=>muscleStats(g,30));
+    const worst=stats.slice().sort((a,b)=>toneRank[b.tone]-toneRank[a.tone])[0]||stats[0];
+    const sets=stats.reduce((s,x)=>s+x.sets,0), vol=stats.reduce((s,x)=>s+x.vol,0);
+    const ago=Math.min(...stats.map(x=>x.ago??999));
+    return {...z,stats,worst,sets,vol,ago:ago===999?null:ago};
+  });
+}
+function renderBodyMap(){
+  const zones=bodyZoneStats();
+  const late=zones.filter(z=>['danger','late'].includes(z.worst?.tone));
+  const hot=zones.filter(z=>['hot','loaded'].includes(z.worst?.tone));
+  const headline=late[0]?`${late[0].label} à relancer`:hot[0]?`${hot[0].label} déjà chargé`:'Répartition correcte';
+  const rows=zones.map(z=>`<button class="body-row ${z.worst?.tone||'empty'}" data-action="body-focus" data-groups="${esc(z.groups.join('|'))}"><span>${esc(z.label)}</span><b>${esc(z.worst?.status||'—')}</b><small>${z.sets} série(s) · ${z.ago===null?'jamais':`J-${z.ago}`}</small></button>`).join('');
+  const zoneButtons=zones.map(z=>`<button class="body-zone ${z.id} ${z.worst?.tone||'empty'}" data-action="body-focus" data-groups="${esc(z.groups.join('|'))}"><span>${esc(z.label)}</span></button>`).join('');
+  return `<section class="bodymap-card card"><div class="section-title no-margin"><div><div class="eyebrow">Vue corps humain</div><h2>Récupération musculaire</h2></div><span class="body-score">${esc(headline)}</span></div><div class="bodymap-layout"><div class="body-figure"><div class="body-core-shape"></div>${zoneButtons}</div><div class="body-list">${rows}</div></div><p class="muted small-text body-help">Couleurs : néon = prêt, orange = chargé, rouge = en retard. Clique un groupe pour le détail.</p></section>`;
+}
+function openBodyFocus(groupsStr=''){
+  const selected=String(groupsStr).split('|').filter(Boolean);
+  const stats=selected.map(g=>muscleStats(g,30));
+  const title=selected.join(' / ')||'Groupe musculaire';
+  const totalSets=stats.reduce((s,x)=>s+x.sets,0), totalVol=Math.round(stats.reduce((s,x)=>s+x.vol,0));
+  const main=stats.slice().sort((a,b)=>(b.ago??999)-(a.ago??999))[0]||stats[0];
+  const exercises=[...new Set(datedWorkoutRows().filter(e=>selected.includes(e.groupe)).map(e=>e.nom))].slice(0,7);
+  $('#modal-root').innerHTML=`<div class="modal-backdrop"><div class="modal body-modal"><div class="between"><div><div class="eyebrow">Focus musculaire</div><h2>${esc(title)}</h2></div><button class="btn small secondary" data-action="modal-close">Fermer</button></div><div class="body-focus-grid"><div><span>Statut</span><b>${esc(main?.status||'À construire')}</b></div><div><span>Séries 30j</span><b>${totalSets}</b></div><div><span>Volume 30j</span><b>${totalVol} kg</b></div><div><span>Dernier travail</span><b>${main?.ago===null?'—':`J-${main.ago}`}</b></div></div><section class="book-section"><h3>Conseil coach</h3><p>${esc(main?.advice||'Construis un peu plus d’historique pour lire ce groupe.')}</p></section><section class="book-section"><h3>Exercices liés</h3>${exercises.length?`<div class="body-exos">${exercises.map(n=>`<button data-action="exercise-open" data-name="${esc(n)}">${esc(n)}</button>`).join('')}</div>`:'<p class="muted">Aucun exercice enregistré récemment.</p>'}</section></div></div>`;
+}
+
 function statsView(){
   setTimeout(renderChart,0);
   const entries=Object.entries(state.history||{}).flatMap(([d,v])=>(v.entries||[]).map(e=>({...e,date:d})));
@@ -449,6 +510,7 @@ function statsView(){
   <div class="tabs stats-tabs"><button class="tab ${statsMode==='trend'?'is-active':''}" data-action="stats-mode" data-mode="trend">Tendance</button><button class="tab ${statsMode==='rm'?'is-active':''}" data-action="stats-mode" data-mode="rm">1RM</button><button class="tab ${statsMode==='body'?'is-active':''}" data-action="stats-mode" data-mode="body">Poids</button></div>
   ${statsMode==='body' ? `<section class="card"><div class="field"><label>Ajouter ton poids corporel</label><div class="row"><input id="body-weight" type="number" step="0.1" min="0" value="${esc(bodyLast)}" placeholder="ex: 82.4"><button class="btn primary" data-action="bodyweight-add">Ajouter</button></div></div></section>` : `<section class="card"><div class="grid-2"><div class="field"><label>Exercice</label><select id="stats-exercise">${names.map(n=>`<option value="${esc(n)}" ${n===selectedMachineName?'selected':''}>${esc(n)}</option>`).join('')}</select></div><div class="field"><label>Mesure</label><select id="stats-metric"><option value="weight" ${statsMetric==='weight'?'selected':''}>Poids max</option><option value="reps" ${statsMetric==='reps'?'selected':''}>Reps max</option><option value="rm" ${statsMetric==='rm'?'selected':''}>1RM estimé/réel</option></select></div></div><div class="chips"><button class="chip ${statsRange==='week'?'is-active':''}" data-action="stats-range" data-range="week">Semaine</button><button class="chip ${statsRange==='month'?'is-active':''}" data-action="stats-range" data-range="month">Mois</button><button class="chip ${statsRange==='year'?'is-active':''}" data-action="stats-range" data-range="year">Année</button><button class="chip ${statsRange==='all'?'is-active':''}" data-action="stats-range" data-range="all">Tout</button></div></section>`}
   <section class="card"><div class="section-title no-margin"><h2>${statsTitle()}</h2></div><div class="chart-box"><canvas id="main-chart"></canvas></div>${statsSummary()}</section>
+  ${renderBodyMap()}
   </div>`;
 }
 function statsTitle(){ if(statsMode==='body') return 'Évolution du poids corporel'; if(statsMode==='rm') return 'Meilleur 1RM par exercice'; return `Progression ${statsMetric==='reps'?'reps':statsMetric==='rm'?'1RM':'poids'} · ${selectedMachineName||''}`; }
@@ -654,6 +716,7 @@ function bindEvents(){ document.addEventListener('click', async e=>{
   if(action==='exercise-back'){ setRoute('session'); }
   if(action==='book-close'){ $('#modal-root').innerHTML=''; }
   if(action==='exercise-book-tab'){ exerciseBookTab=el.dataset.tab||'analyse'; openExerciseBook(exerciseDetailName); }
+  if(action==='body-focus') openBodyFocus(el.dataset.groups||'');
   if(action==='machine-new') machineModal(null);
   if(action==='video-open'){ const url=videoUrl(currentMachine()); url ? window.open(url,'_blank') : toast('Aucune vidéo pour cet exercice','warn'); }
   if(action==='machine-edit') machineModal($('#machine-select')?.value);
