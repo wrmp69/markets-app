@@ -9,3 +9,35 @@
 .follow-page{background:linear-gradient(135deg,color-mix(in srgb,var(--accent) 9%,var(--surface)),var(--surface));border:1px solid color-mix(in srgb,var(--accent) 45%,var(--line));border-radius:20px;padding:14px;margin-bottom:12px}.follow-page h2{font-family:Syne,sans-serif;margin:2px 0 0}.follow-current{display:flex;align-items:center;gap:12px;background:var(--surface2);border-radius:16px;padding:12px;margin:12px 0}.follow-current>span{font-size:30px}.follow-current b,.follow-current small{display:block;color:var(--muted);font-size:12px}.follow-current strong{display:block;font-size:16px}.follow-grid{display:grid;grid-template-columns:1fr;gap:8px}.follow-card{display:flex;gap:10px;align-items:center;text-align:left;border:1px solid var(--line);background:var(--surface);color:var(--text);border-radius:15px;padding:10px}.follow-card.is-active{border-color:var(--accent);box-shadow:0 0 0 1px color-mix(in srgb,var(--accent) 45%,transparent)}.follow-card small{display:block;color:var(--muted);margin-top:2px}.follow-index{width:28px;height:28px;border-radius:50%;display:grid;place-items:center;background:var(--surface2);color:var(--accent);font-weight:800;flex:0 0 auto}.trend-line{display:grid;grid-template-columns:1fr;gap:6px;margin-top:10px;font-size:13px;color:var(--muted)}.trend-line b{color:var(--text)}.trend-line .ok{color:var(--ok)}.trend-line .danger{color:var(--danger)}.small-empty{padding:14px 8px}.no-margin{margin-top:0!important}
 @media(min-width:520px){.follow-grid{grid-template-columns:1fr 1fr}.trend-line{grid-template-columns:1fr 1fr 1fr}}
 .exercise-insights{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:10px 0 14px}.insight-card{background:var(--surface2);border:1px solid var(--line);border-radius:14px;padding:9px 10px;min-height:58px}.insight-card span{display:block;font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin-bottom:4px}.insight-card b{font-size:14px;color:var(--text)}.insight-empty{background:var(--surface2);border:1px dashed var(--line);border-radius:14px;padding:10px 12px;font-size:12px;color:var(--muted)}
+
+
+/* Objectif conseillé exercice */
+.insight-goal{
+  grid-column:1/-1;
+  border:1px solid color-mix(in srgb,var(--accent) 65%,var(--line));
+  background:color-mix(in srgb,var(--accent) 10%,var(--surface));
+  border-radius:14px;
+  padding:10px 12px;
+  display:flex;
+  flex-direction:column;
+  gap:3px;
+}
+.insight-goal span{
+  font-size:11px;
+  color:var(--muted);
+  text-transform:uppercase;
+  letter-spacing:.06em;
+}
+.insight-goal b{
+  font-size:18px;
+  color:var(--text);
+}
+.insight-goal small{
+  color:var(--muted);
+  font-size:12px;
+}
+.insight-goal em{
+  font-size:12px;
+  color:var(--muted);
+  font-style:normal;
+}

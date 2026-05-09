@@ -37,6 +37,35 @@ function lastEntryFor(name){ const all=[]; Object.values(state.history||{}).forE
 function entriesForExercise(name){ const all=[]; Object.values(state.history||{}).forEach(day=>all.push(...(day.entries||[]))); all.push(...(state.session.entries||[])); return all.filter(e=>e.nom===name); }
 function maxWeightFor(name){ const rows=entriesForExercise(name); return rows.length ? Math.max(...rows.map(e=>Number(e.poids)||0)) : null; }
 function maxRepsForWeight(name, poids){ const p=Number(poids); const rows=entriesForExercise(name).filter(e=>Number(e.poids)===p); return rows.length ? Math.max(...rows.map(e=>Number(e.reps)||0)) : null; }
+
+function getExerciseGoal(name, currentWeight){
+  const rows = entriesForExercise(name)
+    .filter(e => Number(e.poids) > 0 && Number(e.reps) > 0)
+    .sort((a,b) => new Date(a.createdAt || 0) - new Date(b.createdAt || 0));
+
+  if(!rows.length) return null;
+
+  const last = rows.at(-1);
+  const p = Number(currentWeight || last.poids || 0);
+  const bestAtCurrent = maxRepsForWeight(name, p);
+  const machine = machineByName(name);
+  const step = Number(machine?.step || 2.5);
+  const heavierTarget = Math.round((p + step) * 10) / 10;
+
+  if(bestAtCurrent){
+    return {
+      main: `${p} kg × ${bestAtCurrent + 1}`,
+      alt: `${heavierTarget} kg × ${Math.max(5, Math.round(bestAtCurrent * 0.75))}`,
+      reason: `Battre ton record à ${p} kg`
+    };
+  }
+
+  return {
+    main: `${last.poids} kg × ${Number(last.reps) + 1}`,
+    alt: Number(last.reps) >= 12 ? `${Math.round((Number(last.poids) + step) * 10) / 10} kg × 8` : null,
+    reason: `Progression depuis ta dernière séance`
+  };
+}
 function getFollowDraft(name){ return state.ui?.followDrafts?.[name] || null; }
 function rememberFollowDraft(name=selectedMachineName){ if(!state.ui?.followMode || !name) return; state.ui.followDrafts ||= {}; state.ui.followDrafts[name] = {...formDraft}; }
 function getTimerFor(name){ return Number(state.timers?.[name] || state.settings.timerDefault || 60); }
@@ -74,10 +103,10 @@ function muscuView(){
   selectedMachineName = m?.nom || selectedMachineName;
   const last=m?lastEntryFor(m.nom):null;
   const followDraft = m ? getFollowDraft(m.nom) : null;
-  const poids = formDraft.poids ?? followDraft?.poids ?? last?.poids ?? m?.poids?.[0] ?? 20;
-  const series = formDraft.series ?? followDraft?.series ?? 1;
-  const reps = formDraft.reps ?? followDraft?.reps ?? last?.reps ?? 10;
-  const rm = formDraft.rm ?? followDraft?.rm ?? '';
+ const poids = formDraft.poids ?? followDraft?.poids ?? last?.poids ?? m?.poids?.[0] ?? 20;
+ const series = formDraft.series ?? followDraft?.series ?? 1;
+ const reps = formDraft.reps ?? followDraft?.reps ?? last?.reps ?? 10;
+ const rm = formDraft.rm ?? followDraft?.rm ?? '';
   return `<div class="desktop-2"><section class="card"><div class="field"><label>Groupe musculaire</label><div class="chips"><button class="chip ${groupFilter===''?'is-active':''}" data-group="">Tout</button>${groups().map(g=>`<button class="chip ${groupFilter===g?'is-active':''}" data-group="${esc(g)}">${GROUP_ICONS[g]||'📌'} ${esc(g)}</button>`).join('')}</div></div>
   <div class="field"><label>Exercice</label><div class="select-row"><select id="machine-select">${filteredMachines().map(x=>`<option value="${esc(x.nom)}" ${x.nom===m?.nom?'selected':''}>${x.icon||'🏋️'} ${esc(x.nom)}</option>`).join('')}</select><button class="btn small" data-action="video-open" title="Vidéo">📹</button><button class="btn small" data-action="machine-edit">✎</button><button class="btn small" data-action="machine-new">+</button></div></div>
   <div id="machine-hint" class="exercise-insights"></div>
@@ -163,6 +192,7 @@ function updateMachineHint(){
   const bestRM = rows.length ? Math.max(...rows.map(e=>Number(e.rm1reel)||oneRM(e.poids,e.reps))) : null;
   const last = lastEntryFor(m.nom);
   const maxReps = maxRepsForWeight(m.nom, currentWeight);
+  const goal = getExerciseGoal(m.nom, currentWeight);
 
   if(!rows.length){
     el.innerHTML = `<div class="insight-empty">Aucun historique pour cet exercice.</div>`;
@@ -174,6 +204,14 @@ function updateMachineHint(){
     <div class="insight-card"><span>📈 Meilleur 1RM</span><b>${bestRM || '—'} kg</b></div>
     <div class="insight-card"><span>🕒 Dernière fois</span><b>${last ? `${last.poids} kg × ${last.reps}` : '—'}</b></div>
     <div class="insight-card"><span>🔥 Max à ${currentWeight || '—'} kg</span><b>${maxReps ? `${maxReps} reps` : '—'}</b></div>
+    ${goal ? `
+      <div class="insight-goal">
+        <span>🎯 Objectif conseillé</span>
+        <b>${goal.main}</b>
+        ${goal.alt ? `<small>Option lourde : ${goal.alt}</small>` : ''}
+        <em>${goal.reason}</em>
+      </div>
+    ` : ''}
   `;
 }
 function captureForm(){
