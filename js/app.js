@@ -28,6 +28,7 @@ let exerciseBookTab = 'analyse';
 let statsMode = 'trend';
 let statsRange = 'month';
 let statsMetric = 'weight';
+let smartTemplatePlan = 'balanced';
 let selectedMachineName = null;
 let formDraft = { poids: null, series: 1, reps: 10, rm: '' };
 
@@ -299,7 +300,7 @@ function home(){
     <div class="grid-2"><div class="kpi"><strong>${days.length}</strong><span>Séances</span></div><div class="kpi"><strong>${Math.round(totalVol)}</strong><span>Volume total</span></div><div class="kpi"><strong>${monthCount}</strong><span>Ce mois-ci</span></div><div class="kpi"><strong>${bestRM||'—'}</strong><span>Meilleur 1RM</span></div></div>
     <button class="btn primary full" data-route="session">Commencer / continuer</button>
     <section><div class="section-title"><h2>Dernière séance</h2></div>${last ? dayCard(last[0], last[1], false) : `<div class="empty">Aucune séance enregistrée.</div>`}</section>
-    <section><div class="section-title"><h2>Templates</h2><button class="btn small" data-action="template-new">+ Créer</button></div>${templateList()}</section>
+    <section><div class="section-title"><h2>Templates</h2><div class="row"><button class="btn small primary icon-text" data-action="template-smart-open">${icon('target')} Smart</button><button class="btn small" data-action="template-new">+ Créer</button></div></div>${templateList()}</section>
   </div>`;
 }
 
@@ -342,9 +343,9 @@ function followPanel(){
   const doneCount = name => (state.session.entries||[]).filter(x=>x.nom===name).length;
   const current = machineByName(selectedMachineName) || machineByName(exercises[0]?.nom);
   const list=exercises.map((e,i)=>{
-    const done=doneCount(e.nom);
-    const active=selectedMachineName===e.nom;
-    return `<div class="follow-card ${active?'is-active':''}" draggable="true" data-follow-index="${i}" data-follow-name="${esc(e.nom)}"><button class="follow-main" data-action="follow-pick" data-name="${esc(e.nom)}"><span class="follow-index">${done?'✓':i+1}</span><span><b>${esc(e.nom)}</b><small>${done} série(s) faite(s)</small></span></button><div class="follow-move"><button type="button" data-action="follow-up" data-name="${esc(e.nom)}" title="Monter">↑</button><button type="button" data-action="follow-down" data-name="${esc(e.nom)}" title="Descendre">↓</button></div></div>`;
+    const done=doneCount(e.nom), target=Number(e.series||3);
+    const active=selectedMachineName===e.nom, complete=done>=target;
+    return `<div class="follow-card ${active?'is-active':''} ${complete?'is-complete':''}" draggable="true" data-follow-index="${i}" data-follow-name="${esc(e.nom)}"><button class="follow-main" data-action="follow-pick" data-name="${esc(e.nom)}"><span class="follow-index">${complete?'✓':i+1}</span><span><b>${esc(e.nom)}</b><small>${done}/${target} séries · objectif ${esc(e.poids||'—')} kg × ${esc(e.reps||10)}</small></span></button><div class="follow-move"><button type="button" data-action="follow-up" data-name="${esc(e.nom)}" title="Monter">↑</button><button type="button" data-action="follow-down" data-name="${esc(e.nom)}" title="Descendre">↓</button></div></div>`;
   }).join('');
   return `<div class="follow-page"><div class="between"><div><div class="eyebrow">Mode suivi</div><h2>${esc(fm.name)}</h2></div><button class="btn small" data-action="follow-stop">Quitter</button></div><div class="follow-current"><span>${icon('strength')}</span><div><b>Exercice actif</b><strong>${esc(current?.nom||'Choisis un exercice')}</strong><small>${doneCount(current?.nom)} série(s) déjà ajoutée(s)</small></div></div><div class="follow-grid">${list}</div></div>`;
 }
@@ -657,6 +658,95 @@ function addEntry(){
 function addCardio(){ const duration=Number($('#c-duration')?.value)||0; const main=Number($('#c-main')?.value)||0; const extra=Number($('#c-extra')?.value)||0; const label = cardioType==='velo' ? `rés. ${main} · ${extra} rpm` : cardioType==='escalier' ? `${main} étages` : `${main} km/h · pente ${extra}%`; state.session.cardio.unshift({id:uid(),type:cardioType,duration,main,extra,label,createdAt:new Date().toISOString()}); persist(); toast('Cardio ajouté','ok'); render(); }
 async function saveSession(){ if(!state.session.entries.length && !state.session.cardio.length) return toast('Séance vide','warn'); const day=todayKey(); const prev=state.history[day] || {entries:[],cardio:[]}; state.history[day]={entries:[...state.session.entries,...(prev.entries||[])], cardio:[...state.session.cardio,...(prev.cardio||[])]}; state.session={entries:[],cardio:[]}; state.ui.followMode=null; formDraft.series=1; persist(); toast('Séance sauvegardée','ok'); setRoute('history'); }
 
+
+function cleanText(v=''){ return String(v).normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase(); }
+function allHistoryEntries(){ return Object.entries(state.history||{}).flatMap(([date,day])=>(day.entries||[]).map(e=>({...e,date}))); }
+function entriesSince(days){ const start=new Date(); start.setDate(start.getDate()-days); const key=start.toISOString().slice(0,10); return allHistoryEntries().filter(e=>e.date>=key); }
+function groupSetsSince(group, days=14){ return entriesSince(days).filter(e=>e.groupe===group).length; }
+function groupLastAgo(group){
+  const dates=allHistoryEntries().filter(e=>e.groupe===group).map(e=>e.date).sort();
+  if(!dates.length) return 999;
+  return Math.max(0,Math.round((new Date(todayKey()+'T00:00:00')-new Date(dates.at(-1)+'T00:00:00'))/86400000));
+}
+function machineHistoryScore(name){
+  const rows=entriesForExercise(name);
+  const last=lastEntryFor(name);
+  const recent=rows.filter(e=>e.createdAt && (Date.now()-new Date(e.createdAt).getTime())<1000*60*60*24*45).length;
+  return rows.length*3 + recent*2 + (last?5:0);
+}
+function templateWeightFor(name){
+  const m=machineByName(name);
+  const last=latestWorkoutEntriesFor(name);
+  if(last.length) return Math.max(...last.map(e=>Number(e.poids)||0));
+  return m?.poids?.[0] ?? 20;
+}
+function makeTplExercise(name, series=3, reps=10){ return {nom:name, series, reps, poids:templateWeightFor(name)}; }
+function pickExercise({group=null, keywords=[], avoid=new Set(), preferHistory=true}={}){
+  const ks=keywords.map(cleanText);
+  let list=allMachines().filter(m=>(!group||m.groupe===group)&&!avoid.has(m.nom));
+  if(ks.length) list=list.filter(m=>ks.some(k=>cleanText(m.nom).includes(k)));
+  if(!list.length && group) list=allMachines().filter(m=>m.groupe===group&&!avoid.has(m.nom));
+  if(!list.length) list=allMachines().filter(m=>!avoid.has(m.nom));
+  list=list.slice().sort((a,b)=> preferHistory ? machineHistoryScore(b.nom)-machineHistoryScore(a.nom) : a.nom.localeCompare(b.nom));
+  const chosen=list[0]; if(chosen) avoid.add(chosen.nom); return chosen?.nom || null;
+}
+function smartTemplateCatalog(){
+  return [
+    {kind:'balanced',title:'Équilibre 60 min',tag:'Complet',desc:'Séance équilibrée selon les groupes les moins travaillés récemment.',series:3,reps:10},
+    {kind:'short',title:'Express 35 min',tag:'Rapide',desc:'Peu d’exercices, gros rendement, parfait quand tu as peu de temps.',series:3,reps:10},
+    {kind:'force',title:'Force contrôlée',tag:'Lourd',desc:'Mouvements prioritaires, reps plus basses, repos intelligent plus long.',series:4,reps:6},
+    {kind:'pump',title:'Congestion',tag:'Volume',desc:'Isolation, reps plus hautes, grosse sensation sans chercher le PR.',series:3,reps:12},
+    {kind:'recovery',title:'Reprise propre',tag:'Fatigue',desc:'Groupes à relancer, volume modéré, idéal après pause ou fatigue.',series:2,reps:12},
+    {kind:'pr',title:'PR Day intelligent',tag:'Performance',desc:'Exercices où ton historique indique une opportunité de progression.',series:3,reps:8}
+  ];
+}
+function buildSmartTemplate(kind){
+  const avoid=new Set(), groupsSorted=groups().filter(Boolean).sort((a,b)=>groupSetsSince(a,14)-groupSetsSince(b,14)||groupLastAgo(b)-groupLastAgo(a));
+  let plan=smartTemplateCatalog().find(x=>x.kind===kind)||smartTemplateCatalog()[0], names=[];
+  if(kind==='short'){
+    ['Pectoraux','Dos','Jambes','Épaules'].forEach(g=>{ const n=pickExercise({group:g,avoid}); if(n) names.push(n); });
+  } else if(kind==='force'){
+    [
+      ['Pectoraux',['press','developpe','couche']],['Dos',['tirage horizontal','rowing','tirage']],['Jambes',['presse','hack','squat']],['Épaules',['developpe','militaire']],['Biceps',['curl']],['Triceps',['extension','dips']]
+    ].forEach(([g,k])=>{ const n=pickExercise({group:g,keywords:k,avoid}); if(n) names.push(n); });
+  } else if(kind==='pump'){
+    [
+      ['Pectoraux',['fly','ecarte','pec']],['Épaules',['elevation','laterale','arriere']],['Biceps',['curl']],['Triceps',['extension','poulie']],['Jambes',['extension','curl','abduct','adduct']],['Dos',['pull','tirage']]
+    ].forEach(([g,k])=>{ const n=pickExercise({group:g,keywords:k,avoid}); if(n) names.push(n); });
+  } else if(kind==='recovery'){
+    groupsSorted.slice(0,5).forEach(g=>{ const n=pickExercise({group:g,avoid}); if(n) names.push(n); });
+  } else if(kind==='pr'){
+    names=allMachines().map(m=>({name:m.nom,ai:progressionAIFor(m.nom),score:machineHistoryScore(m.nom)}))
+      .filter(x=>['up','progress'].includes(x.ai.level)||x.score>10)
+      .sort((a,b)=>(a.ai.level==='up'?-1:0)-(b.ai.level==='up'?-1:0)||b.score-a.score)
+      .map(x=>x.name).filter(n=>!avoid.has(n)).slice(0,5);
+    names.forEach(n=>avoid.add(n));
+  } else {
+    groupsSorted.slice(0,6).forEach(g=>{ const n=pickExercise({group:g,avoid}); if(n) names.push(n); });
+  }
+  while(names.length<4){ const n=pickExercise({avoid}); if(!n) break; names.push(n); }
+  const exercises=names.slice(0,6).map(n=>makeTplExercise(n, plan.series, plan.reps));
+  if(kind==='force') exercises.forEach(e=>{e.series=4;e.reps=6;});
+  if(kind==='pump') exercises.forEach(e=>{e.series=3;e.reps=12;});
+  if(kind==='recovery') exercises.forEach(e=>{e.series=2;e.reps=12;});
+  if(kind==='pr') exercises.forEach(e=>{e.series=3;e.reps=8;});
+  return {id:uid(), name:`${plan.title} · ${todayKey().slice(5)}`, smartKind:kind, createdAt:new Date().toISOString(), exercises};
+}
+function smartTemplatePreview(kind){
+  const tpl=buildSmartTemplate(kind);
+  return tpl.exercises.map(e=>`<div><b>${esc(e.nom)}</b><span>${e.series}×${e.reps} · ${esc(e.poids)} kg</span></div>`).join('');
+}
+function openSmartTemplateModal(){
+  const cards=smartTemplateCatalog().map(p=>`<button class="smart-template-card ${smartTemplatePlan===p.kind?'is-active':''}" data-action="template-smart-pick" data-kind="${p.kind}"><span>${esc(p.tag)}</span><b>${esc(p.title)}</b><small>${esc(p.desc)}</small></button>`).join('');
+  $('#modal-root').innerHTML=`<div class="modal-backdrop"><div class="modal smart-template-modal"><div class="between"><div><div class="eyebrow">Templates intelligents</div><h2>Choisis le plan</h2></div><button class="btn small secondary" data-action="modal-close">Fermer</button></div><div class="smart-template-grid">${cards}</div><section class="smart-template-preview"><h3>Aperçu généré</h3><div class="book-list">${smartTemplatePreview(smartTemplatePlan)}</div></section><div class="modal-actions"><button class="btn secondary" data-action="modal-close">Annuler</button><button class="btn primary" data-action="template-smart-create" data-kind="${smartTemplatePlan}">Créer le template</button></div></div></div>`;
+}
+function createSmartTemplate(kind){
+  const tpl=buildSmartTemplate(kind);
+  if(!tpl.exercises.length) return toast('Impossible de générer un template','warn');
+  state.templates.unshift(tpl);
+  persist(); $('#modal-root').innerHTML=''; toast('Template intelligent créé','ok'); render();
+}
+
 function normalizeTpl(t){ return { id:t.id||uid(), name:t.name||t.nom||'Template', exercises:(t.exercises||t.exercices||[]).map(e=> typeof e==='string'?{nom:e}: {nom:e.nom, series:e.series||3, reps:e.reps||10, poids:e.poids}) }; }
 function createTemplateModal(existingId=null){
   const existing=existingId ? normalizeTpl(state.templates.find(t=>t.id===existingId)||{}) : null;
@@ -665,7 +755,7 @@ function createTemplateModal(existingId=null){
   $('#modal-root').innerHTML=`<div class="modal-backdrop"><div class="modal"><h2>${existing?'Modifier':'Nouveau'} template</h2><div class="field"><label>Nom</label><input id="tpl-name" value="${esc(existing?.name||'')}" placeholder="Push day"></div><div class="field"><label>Exercices</label><select id="tpl-exos" multiple size="10">${options}</select></div><p class="muted small-text">Ctrl/clic sur PC pour plusieurs choix. Sur mobile, sélectionne puis sauvegarde.</p><div class="modal-actions"><button class="btn secondary" data-action="modal-close">Annuler</button><button class="btn primary" data-action="template-save" data-id="${existingId||''}">${existing?'Enregistrer':'Créer'}</button></div></div></div>`;
 }
 function saveTemplate(id=null){ const name=$('#tpl-name')?.value.trim(); const selected=$$('#tpl-exos option:checked').map(o=>o.value); if(!name || !selected.length) return toast('Nom + exercices obligatoires','warn'); const tpl={id:id||uid(),name,exercises:selected.map(n=>({nom:n,series:3,reps:10,poids:lastEntryFor(n)?.poids || machineByName(n)?.poids?.[0] || 20}))}; if(id){ state.templates=state.templates.map(t=>t.id===id?tpl:t); } else state.templates.push(tpl); persist(); $('#modal-root').innerHTML=''; toast('Template sauvegardé','ok'); render(); }
-async function startFollowTemplate(id){ const t=normalizeTpl(state.templates.find(x=>x.id===id)||{}); if(!t.exercises?.length) return; if(state.session.entries.length && !await confirmModal('Charger ce template en mode suivi ? La séance en cours sera conservée.')) return; state.ui.followMode={id:t.id,name:t.name,exercises:t.exercises}; state.ui.followDrafts ||= {}; selectedMachineName=t.exercises[0].nom; const saved=getFollowDraft(selectedMachineName); const last=lastEntryFor(selectedMachineName); formDraft=saved ? {...saved} : {poids:last?.poids ?? machineByName(selectedMachineName)?.poids?.[0] ?? 20, series:1, reps:last?.reps ?? 10, rm:''}; persist(); setRoute('session'); }
+async function startFollowTemplate(id){ const t=normalizeTpl(state.templates.find(x=>x.id===id)||{}); if(!t.exercises?.length) return; if(state.session.entries.length && !await confirmModal('Charger ce template en mode suivi ? La séance en cours sera conservée.')) return; state.ui.followMode={id:t.id,name:t.name,exercises:t.exercises}; state.ui.followDrafts ||= {}; const first=t.exercises[0]; selectedMachineName=first.nom; const saved=getFollowDraft(selectedMachineName); const last=lastEntryFor(selectedMachineName); formDraft=saved ? {...saved} : {poids:first.poids ?? last?.poids ?? machineByName(selectedMachineName)?.poids?.[0] ?? 20, series:1, reps:first.reps ?? last?.reps ?? 10, rm:''}; persist(); setRoute('session'); }
 
 function machineModal(existingName=null){
   const m=existingName?machineByName(existingName):currentMachine(); const isCustom=!!state.customMachines.find(x=>x.nom===m?.nom);
@@ -797,11 +887,14 @@ function bindEvents(){ document.addEventListener('click', async e=>{
   if(action==='session-clear' && await confirmModal('Effacer la séance en cours ?')){ state.session={entries:[],cardio:[]}; state.ui.followMode=null; formDraft.series=1; persist(); render(); }
   if(action==='day-delete' && await confirmModal('Supprimer cette journée ?')){ delete state.history[el.dataset.date]; persist(); render(); }
   if(action==='template-new') createTemplateModal();
+  if(action==='template-smart-open') openSmartTemplateModal();
+  if(action==='template-smart-pick'){ smartTemplatePlan=el.dataset.kind||'balanced'; openSmartTemplateModal(); }
+  if(action==='template-smart-create') createSmartTemplate(el.dataset.kind||smartTemplatePlan);
   if(action==='template-edit') createTemplateModal(el.dataset.id);
   if(action==='template-save') saveTemplate(el.dataset.id || null);
   if(action==='template-follow') startFollowTemplate(el.dataset.id);
   if(action==='template-delete' && await confirmModal('Supprimer ce template ?')){ state.templates=state.templates.filter(t=>t.id!==el.dataset.id); persist(); render(); }
-  if(action==='follow-pick'){ captureForm(); rememberFollowDraft(selectedMachineName); selectedMachineName=el.dataset.name; const saved=getFollowDraft(selectedMachineName); const last=lastEntryFor(selectedMachineName); formDraft=saved ? {...saved} : {poids:last?.poids ?? machineByName(selectedMachineName)?.poids?.[0] ?? 20, series:1, reps:last?.reps ?? 10, rm:''}; persist(); render(); }
+  if(action==='follow-pick'){ captureForm(); rememberFollowDraft(selectedMachineName); selectedMachineName=el.dataset.name; const saved=getFollowDraft(selectedMachineName); const last=lastEntryFor(selectedMachineName); const target=state.ui.followMode?.exercises?.find(x=>x.nom===selectedMachineName); const done=(state.session.entries||[]).filter(x=>x.nom===selectedMachineName).length; formDraft=saved ? {...saved} : {poids:target?.poids ?? last?.poids ?? machineByName(selectedMachineName)?.poids?.[0] ?? 20, series:Math.min(done+1,99), reps:target?.reps ?? last?.reps ?? 10, rm:''}; persist(); render(); }
   if(action==='follow-up') moveFollowExerciseByName(el.dataset.name,-1);
   if(action==='follow-down') moveFollowExerciseByName(el.dataset.name,1);
   if(action==='follow-stop'){ state.ui.followMode=null; persist(); render(); }
