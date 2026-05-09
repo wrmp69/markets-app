@@ -473,6 +473,8 @@ function entryCard(e){
   const isPR=!!e.prType;
   const prBadge=isPR?`<span class="badge pr-badge">NEW PR</span>`:'';
   const prLine=isPR?`<div class="pr-entry-line"><span>Performance débloquée</span><b>${esc(prLabelFor(e))}</b></div>`:'';
+  const restInfo=e.restSuggested?{seconds:e.restSuggested,reason:e.restReason||'repos'}:smartRestFor(e.nom,e);
+  const restLine=restInfo?.seconds?`<div class="rest-line">${icon('clock')} Repos conseillé · ${restInfo.seconds}s${restInfo.reason?` · ${esc(restInfo.reason)}`:''}</div>`:'';
   return `<div class="entry-swipe ${isPR?'has-pr':''}" data-entry-id="${e.id}"><div class="swipe-delete-bg">Supprimer</div><div class="item entry-item"><button class="entry-head" data-action="entry-toggle" data-id="${e.id}"><div><div class="item-title">${esc(e.nom)}</div><div class="meta">${esc(e.groupe||'')} · série ${e.series} · ${e.reps} reps · ${e.poids} kg</div>${prLine}${restLine}</div><span class="entry-badges">${prBadge}<span class="badge blue">1RM ${rm}</span></span><span class="chev">${open?'⌄':'›'}</span></button><div class="entry-body ${open?'':'hidden'}"><div class="entry-actions"><button class="btn small icon-text" data-action="exercise-open" data-name="${esc(e.nom)}">${icon('book')} Fiche</button><button class="btn small icon-text" data-action="entry-edit" data-id="${e.id}">${icon('edit')} Modifier</button><button class="btn small ok" data-action="rest-edit" data-name="${esc(e.nom)}">Repos</button><button class="btn small danger icon-text" data-action="entry-delete" data-id="${e.id}">${icon('delete')} Suppr.</button></div></div></div></div>`;
 }
 
