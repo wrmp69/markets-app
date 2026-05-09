@@ -230,36 +230,34 @@ function templateList(){
 
 function sessionView(){ return `<div class="tabs"><button class="tab ${sessionTab==='muscu'?'is-active':''}" data-action="session-tab" data-tab="muscu">Muscu</button><button class="tab ${sessionTab==='cardio'?'is-active':''}" data-action="session-tab" data-tab="cardio">Cardio</button></div>${sessionTab==='cardio' ? cardioForm() : muscuView()}`; }
 function liveDashboard(){
-  const entries=state.session.entries||[];
-
-  if(!entries.length){
-    return `<div class="live-dashboard empty-dashboard"><span>🚀 La séance commence</span></div>`;
-  }
-
+  const entries=state.session.entries||[], m=defaultMachine();
+  const name=m?.nom||selectedMachineName, goal=name?getExerciseGoal(name):null;
+  const currentRows=entries.filter(e=>e.nom===name);
   const startedAt=entries.at(-1)?.createdAt;
   const mins=startedAt?Math.max(1,Math.round((Date.now()-new Date(startedAt).getTime())/60000)):0;
+  const last=currentRows[0], best=maxRepsForWeight(name,Number($('#poids')?.value||formDraft.poids||last?.poids||0));
+  const recordPossible=best&&Number(formDraft.reps)>=best;
+  const rpeAvg=currentRows.length?Math.round(currentRows.reduce((s,e)=>s+Number(e.rpe||0),0)/currentRows.filter(e=>e.rpe).length||0):0;
+  const fatigue=rpeAvg>=9?'🔴 Très dur':rpeAvg>=8?'🟠 Fatigue':currentRows.length>=4?'🟡 Déjà chargé':'🟢 Frais';
+  const fm=state.ui.followMode, remaining=fm?(fm.exercises||[]).map(x=>x.nom).filter(n=>entries.filter(e=>e.nom===n).length<3):[];
+  const rest=getTimerFor(name);
 
-  const volumeTotal=entries.reduce((s,e)=>s+volume(e),0);
+  if(!entries.length&&!fm){
+    return `<div class="coach-dashboard"><div class="coach-main"><b>🚀 Prêt</b><span>Choisis un exercice et lance ta première série.</span></div></div>`;
+  }
 
-  const groups=[...new Set(entries.map(e=>e.groupe).filter(Boolean))];
-
-  let records=0;
-
-  entries.forEach(e=>{
-    const max=maxWeightFor(e.nom);
-    if(Number(e.poids)>=Number(max)) records++;
-  });
-
-  let fatigue='🟢 Frais';
-  if(volumeTotal>12000) fatigue='🟠 Fatigué';
-  if(volumeTotal>22000) fatigue='🔴 Très fatigué';
-
-  return `<div class="live-dashboard">
-    <div class="live-kpi"><span>⏱ Temps</span><b>${mins} min</b></div>
-    <div class="live-kpi"><span>🏋️ Volume</span><b>${Math.round(volumeTotal)} kg</b></div>
-    <div class="live-kpi"><span>🏆 Records</span><b>${records}</b></div>
-    <div class="live-kpi"><span>😵 Fatigue</span><b>${fatigue}</b></div>
-    <div class="live-groups">${groups.map(g=>`<span>${g}</span>`).join('')}</div>
+  return `<div class="coach-dashboard">
+    <div class="coach-main">
+      <b>🏋️ ${esc(name||'Exercice')}</b>
+      <span>${goal?`Objectif : ${goal.main}`:'Objectif : démarre proprement'}</span>
+    </div>
+    <div class="coach-grid">
+      <div><span>⏱ Temps</span><b>${mins||'—'} min</b></div>
+      <div><span>Repos</span><b>${rest}s</b></div>
+      <div><span>État</span><b>${fatigue}</b></div>
+      <div><span>Signal</span><b>${recordPossible?'🔥 Record possible':'—'}</b></div>
+    </div>
+    ${fm?`<div class="coach-note">📋 Restant : ${remaining.length?remaining.slice(0,3).map(esc).join(', '):'template terminé ✅'}</div>`:''}
   </div>`;
 }
 function muscuView(){

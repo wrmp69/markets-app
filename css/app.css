@@ -29,3 +29,14 @@
 .live-groups{grid-column:1/-1;display:flex;flex-wrap:wrap;gap:7px}
 .live-groups span{border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:6px 10px;font-size:12px}
 .empty-dashboard{display:flex;justify-content:center;align-items:center;padding:16px;border:1px dashed var(--line);border-radius:16px;color:var(--muted)}
+
+/* Coach */
+.coach-dashboard{background:linear-gradient(135deg,color-mix(in srgb,var(--accent) 10%,var(--surface)),var(--surface));border:1px solid color-mix(in srgb,var(--accent) 42%,var(--line));border-radius:18px;padding:12px;margin-bottom:14px}
+.coach-main{display:grid;gap:3px;margin-bottom:10px}
+.coach-main b{font-size:16px}
+.coach-main span{font-size:13px;color:var(--muted)}
+.coach-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:7px}
+.coach-grid div{background:var(--surface2);border:1px solid var(--line);border-radius:13px;padding:8px 7px;text-align:center}
+.coach-grid span{display:block;font-size:10px;color:var(--muted);margin-bottom:3px}
+.coach-grid b{font-size:12px}
+.coach-note{margin-top:9px;font-size:12px;color:var(--muted)}
