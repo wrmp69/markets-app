@@ -379,13 +379,50 @@ function sessionCoachPanel(){
     ${groupChips?`<div class="session-ai-groups">${groupChips}</div>`:''}
   </section>`;
 }
+function timeShort(iso){
+  if(!iso) return '--:--';
+  const d=new Date(iso);
+  if(Number.isNaN(d.getTime())) return '--:--';
+  return d.toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'});
+}
+function sessionTimelineStats(entries,cardio){
+  const all=[...entries,...cardio].filter(x=>x.createdAt).map(x=>new Date(x.createdAt).getTime()).filter(Boolean).sort((a,b)=>a-b);
+  const duration=all.length?Math.max(1,Math.round((Date.now()-all[0])/60000)):0;
+  const totalVolume=entries.reduce((s,e)=>s+volume(e),0);
+  const topSet=entries.slice().sort((a,b)=>(Number(b.rm1reel)||oneRM(b.poids,b.reps))-(Number(a.rm1reel)||oneRM(a.poids,a.reps)))[0];
+  const prCount=entries.filter(e=>e.prType).length;
+  return {duration,totalVolume,topSet,prCount,sets:entries.length,cardio:cardio.length};
+}
+function sessionTimelineItem(entry,index){
+  const latest=index===0;
+  const pr=!!entry.prType;
+  const nodeLabel=pr?'PR':String(index+1).padStart(2,'0');
+  return `<div class="timeline-row ${latest?'is-latest':''} ${pr?'is-pr':''}">
+    <div class="timeline-rail"><span class="timeline-time">${timeShort(entry.createdAt)}</span><span class="timeline-dot">${nodeLabel}</span></div>
+    <div class="timeline-content">${entryCard(entry)}</div>
+  </div>`;
+}
+function cardioTimelineItem(c,index){
+  return `<div class="timeline-row is-cardio">
+    <div class="timeline-rail"><span class="timeline-time">${timeShort(c.createdAt)}</span><span class="timeline-dot">C${index+1}</span></div>
+    <div class="timeline-content">${cardioItem(c)}</div>
+  </div>`;
+}
 function currentSessionList(){
   const e=state.session.entries||[], c=state.session.cardio||[];
   if(!e.length && !c.length) return `<div class="empty">Aucun exercice. Lance-toi.</div>`;
   const prs=sessionPREvents();
   const prPanel=prs.length?`<div class="pr-strip"><div><span>Live records</span><strong>${prs.length} PR session</strong></div>${prs.map(x=>`<button class="pr-mini" data-action="exercise-open" data-name="${esc(x.nom)}"><b>NEW PR</b><small>${esc(x.nom)}</small><em>${esc(prLabelFor(x))}</em></button>`).join('')}</div>`:'';
   const coach=sessionCoachPanel();
-  return `${prPanel}${coach}<div class="list session-timeline">${e.map(entryCard).join('')}${c.map(cardioItem).join('')}</div><div class="card session-total"><div class="between"><span class="muted">Volume séance</span><strong>${Math.round(e.reduce((s,x)=>s+volume(x),0))} kg</strong></div></div>`;
+  const st=sessionTimelineStats(e,c);
+  const top=st.topSet?`${esc(st.topSet.nom)} · ${st.topSet.poids} kg × ${st.topSet.reps}`:'—';
+  const rows=[...e.map(sessionTimelineItem),...c.map(cardioTimelineItem)].join('');
+  return `${prPanel}${coach}<section class="session-timeline-pro">
+    <div class="timeline-head"><div><span class="ai-kicker">Timeline séance</span><h3>Déroulé live</h3></div><strong>${st.duration || '--'} min</strong></div>
+    <div class="timeline-stats"><span><b>${st.sets}</b><em>séries</em></span><span><b>${Math.round(st.totalVolume)}</b><em>kg</em></span><span><b>${st.prCount}</b><em>PR</em></span></div>
+    <div class="timeline-best"><span>Top série</span><b>${top}</b></div>
+    <div class="timeline-track">${rows}</div>
+  </section><div class="card session-total"><div class="between"><span class="muted">Volume séance</span><strong>${Math.round(st.totalVolume)} kg</strong></div></div>`;
 }
 function entryCard(e){
   const rm=Number(e.rm1reel)||oneRM(e.poids,e.reps);
