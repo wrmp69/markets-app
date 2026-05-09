@@ -975,3 +975,77 @@ html.light .exercise-book{background:#fff;border-color:rgba(11,27,51,.12)}.book-
 @media(min-width:820px){.shell,.bottom-nav{max-width:960px}.premium-session{grid-template-columns:430px 1fr;gap:18px}.premium-session>.premium-focus{grid-column:1/-1}.view{padding-inline:28px}.card,.premium-form{border-radius:30px}}
 @media(max-width:420px){.view{padding-inline:14px}.premium-focus{border-radius:26px}.focus-head h2{font-size:22px}.book-pages,.book-section.split{grid-template-columns:1fr}.exercise-book.refined:before{display:none}.entry-actions{grid-template-columns:1fr 1fr}.bottom-nav{width:calc(100% - 12px);bottom:6px}}
 @media(prefers-reduced-motion:reduce){*,*:before,*:after{animation:none!important;transition:none!important}}
+
+/* ===== Fix Upgrade 7 — Coach IA en mode clair ===== */
+html.light .session-ai{
+background:radial-gradient(circle at 92% 0%,rgba(99,212,0,.14),transparent 30%),linear-gradient(145deg,#ffffff,#f2f8ea)!important;
+border-color:rgba(99,130,45,.20)!important;
+box-shadow:0 18px 42px rgba(10,22,16,.11)!important;
+color:#07120d!important
+}
+html.light .session-ai:before{
+background:radial-gradient(circle,rgba(99,212,0,.16),transparent 62%)!important;
+opacity:.75
+}
+html.light .session-ai:after{
+background:linear-gradient(90deg,transparent,rgba(99,212,0,.16),transparent)!important;
+opacity:.45
+}
+html.light .session-ai .ai-kicker{
+color:#4a8f00!important;
+text-shadow:none!important
+}
+html.light .session-ai h3,
+html.light .session-ai-grid b{
+color:#07120d!important;
+text-shadow:none!important
+}
+html.light .session-ai-head strong{
+background:linear-gradient(135deg,#63d400,#0f9b5f)!important;
+color:#07120d!important;
+box-shadow:0 12px 28px rgba(99,212,0,.22)!important
+}
+html.light .session-ai-grid div{
+background:#ffffff!important;
+border-color:rgba(7,18,13,.09)!important;
+box-shadow:0 10px 24px rgba(10,22,16,.06)!important
+}
+html.light .session-ai-grid span,
+html.light .session-ai p,
+html.light .session-ai-groups em{
+color:#596a56!important
+}
+html.light .session-ai-balance{
+background:rgba(99,212,0,.08)!important;
+border-color:rgba(99,212,0,.20)!important;
+color:#24351f!important
+}
+html.light .session-ai-balance .svg-wrap{
+color:#4a8f00!important
+}
+html.light .session-ai-groups span{
+background:#ffffff!important;
+border-color:rgba(99,212,0,.18)!important
+}
+html.light .session-ai-groups b{
+color:#4a8f00!important
+}
+html.light .session-ai.orange{
+border-color:rgba(184,121,58,.28)!important;
+box-shadow:0 18px 42px rgba(10,22,16,.11)!important
+}
+html.light .session-ai.orange .session-ai-head strong{
+background:linear-gradient(135deg,#ffb347,#b8793a)!important;
+color:#07120d!important
+}
+html.light .session-ai.red{
+border-color:rgba(180,83,61,.28)!important;
+box-shadow:0 18px 42px rgba(10,22,16,.11)!important
+}
+html.light .session-ai.red .ai-kicker{
+color:#b4533d!important
+}
+html.light .session-ai.red .session-ai-head strong{
+background:linear-gradient(135deg,#ff7a66,#b4533d)!important;
+color:#fff!important
+}
