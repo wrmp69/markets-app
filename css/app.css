@@ -1049,3 +1049,32 @@ html.light .session-ai.red .session-ai-head strong{
 background:linear-gradient(135deg,#ff7a66,#b4533d)!important;
 color:#fff!important
 }
+
+
+/* ===== Body map 4.2 — atlas humain multi-silhouettes ===== */
+.body-atlas-svg{width:min(100%,430px);max-width:430px;filter:drop-shadow(0 26px 54px rgba(0,0,0,.34))}
+.atlas-bg{fill:rgba(0,0,0,.18);stroke:rgba(183,255,0,.10);stroke-width:1}
+.atlas-headline{font-size:13px;fill:var(--muted);letter-spacing:.16em}
+.atlas-tile-bg{fill:rgba(255,255,255,.032);stroke:rgba(255,255,255,.075);stroke-width:1;transition:fill .18s ease,stroke .18s ease,filter .18s ease}
+.atlas-title{fill:var(--text);font-size:10.5px;font-weight:900;text-transform:uppercase;letter-spacing:.05em}
+.atlas-sub{fill:var(--muted);font-size:8.5px;font-weight:800;text-transform:uppercase;letter-spacing:.04em}
+.atlas-body circle,.atlas-body path{fill:rgba(120,160,185,.44);stroke:rgba(224,240,255,.30);stroke-width:.85;vector-effect:non-scaling-stroke}
+.atlas-body .atlas-line,.atlas-body .atlas-neck{fill:none;stroke:rgba(235,245,255,.38);stroke-width:.8;vector-effect:non-scaling-stroke}
+.atlas-body .backline{stroke:rgba(235,245,255,.46)}
+.atlas-highlight path{fill:rgba(183,255,0,.70);stroke:rgba(215,255,85,.98);stroke-width:1.15;filter:drop-shadow(0 0 10px rgba(183,255,0,.42));transition:fill .18s ease,stroke .18s ease,filter .18s ease}
+.atlas-highlight .atlas-cut{fill:none!important;stroke:rgba(8,12,18,.64);stroke-width:.9;filter:none}
+.human-atlas-zone{cursor:pointer;outline:none;transition:transform .18s ease,filter .18s ease,opacity .18s ease;transform-origin:center}
+.human-atlas-zone:hover,.human-atlas-zone:focus{filter:drop-shadow(0 0 16px rgba(183,255,0,.55));transform:translateY(-2px)}
+.human-atlas-zone:hover .atlas-tile-bg,.human-atlas-zone:focus .atlas-tile-bg{stroke:rgba(183,255,0,.42);fill:rgba(183,255,0,.045)}
+.human-atlas-zone.tone-ready .atlas-highlight path{fill:rgba(183,255,0,.72);stroke:rgba(220,255,77,.98);filter:drop-shadow(0 0 12px rgba(183,255,0,.55))}
+.human-atlas-zone.tone-loaded .atlas-highlight path,.human-atlas-zone.tone-late .atlas-highlight path{fill:rgba(255,190,70,.70);stroke:rgba(255,217,96,.98);filter:drop-shadow(0 0 12px rgba(255,190,70,.42))}
+.human-atlas-zone.tone-hot .atlas-highlight path,.human-atlas-zone.tone-danger .atlas-highlight path{fill:rgba(255,78,88,.70);stroke:rgba(255,112,118,.98);filter:drop-shadow(0 0 13px rgba(255,78,88,.48))}
+.human-atlas-zone.tone-empty{opacity:.64}.human-atlas-zone.tone-empty .atlas-highlight path{fill:rgba(255,255,255,.14);stroke:rgba(255,255,255,.25);filter:none}
+html.light .atlas-bg{fill:#fff7ee;stroke:rgba(11,27,51,.10)}
+html.light .atlas-tile-bg{fill:rgba(11,27,51,.025);stroke:rgba(11,27,51,.10)}
+html.light .atlas-body circle,html.light .atlas-body path{fill:rgba(109,137,157,.46);stroke:rgba(11,27,51,.18)}
+html.light .atlas-body .atlas-line,html.light .atlas-body .atlas-neck{stroke:rgba(11,27,51,.26)}
+html.light .human-atlas-zone.tone-ready .atlas-highlight path{fill:rgba(47,125,99,.52);stroke:rgba(47,125,99,.88);filter:drop-shadow(0 0 8px rgba(47,125,99,.25))}
+html.light .human-atlas-zone.tone-loaded .atlas-highlight path,html.light .human-atlas-zone.tone-late .atlas-highlight path{fill:rgba(184,121,58,.54);stroke:rgba(184,121,58,.88);filter:drop-shadow(0 0 8px rgba(184,121,58,.22))}
+html.light .human-atlas-zone.tone-hot .atlas-highlight path,html.light .human-atlas-zone.tone-danger .atlas-highlight path{fill:rgba(180,83,61,.54);stroke:rgba(180,83,61,.88);filter:drop-shadow(0 0 8px rgba(180,83,61,.22))}
+@media(max-width:420px){.body-atlas-svg{max-width:100%}.atlas-title{font-size:9.5px}.atlas-sub{font-size:7.8px}}
