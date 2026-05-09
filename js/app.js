@@ -74,10 +74,10 @@ function muscuView(){
   selectedMachineName = m?.nom || selectedMachineName;
   const last=m?lastEntryFor(m.nom):null;
   const followDraft = m ? getFollowDraft(m.nom) : null;
-  const poids = followDraft?.poids ?? formDraft.poids ?? last?.poids ?? m?.poids?.[0] ?? 20;
-  const series = followDraft?.series ?? formDraft.series ?? 1;
-  const reps = followDraft?.reps ?? formDraft.reps ?? last?.reps ?? 10;
-  const rm = followDraft?.rm ?? formDraft.rm ?? '';
+  const poids = formDraft.poids ?? followDraft?.poids ?? last?.poids ?? m?.poids?.[0] ?? 20;
+  const series = formDraft.series ?? followDraft?.series ?? 1;
+  const reps = formDraft.reps ?? followDraft?.reps ?? last?.reps ?? 10;
+  const rm = formDraft.rm ?? followDraft?.rm ?? '';
   return `<div class="desktop-2"><section class="card"><div class="field"><label>Groupe musculaire</label><div class="chips"><button class="chip ${groupFilter===''?'is-active':''}" data-group="">Tout</button>${groups().map(g=>`<button class="chip ${groupFilter===g?'is-active':''}" data-group="${esc(g)}">${GROUP_ICONS[g]||'📌'} ${esc(g)}</button>`).join('')}</div></div>
   <div class="field"><label>Exercice</label><div class="select-row"><select id="machine-select">${filteredMachines().map(x=>`<option value="${esc(x.nom)}" ${x.nom===m?.nom?'selected':''}>${x.icon||'🏋️'} ${esc(x.nom)}</option>`).join('')}</select><button class="btn small" data-action="video-open" title="Vidéo">📹</button><button class="btn small" data-action="machine-edit">✎</button><button class="btn small" data-action="machine-new">+</button></div></div>
   <div id="machine-hint" class="exercise-insights"></div>
