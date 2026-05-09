@@ -13,6 +13,7 @@ state.settings ||= {};
 state.settings.timerDefault ||= 60;
 state.bodyWeight ||= [];
 state.ui ||= { entryOpen: {}, followMode: null, followScroll: 0 };
+state.ui.prEvents ||= [];
 
 let route = 'home';
 let groupFilter = '';
@@ -304,15 +305,40 @@ function followPanel(){
   }).join('');
   return `<div class="follow-page"><div class="between"><div><div class="eyebrow">Mode suivi</div><h2>${esc(fm.name)}</h2></div><button class="btn small" data-action="follow-stop">Quitter</button></div><div class="follow-current"><span>${icon('strength')}</span><div><b>Exercice actif</b><strong>${esc(current?.nom||'Choisis un exercice')}</strong><small>${doneCount(current?.nom)} série(s) déjà ajoutée(s)</small></div></div><div class="follow-grid">${list}</div></div>`;
 }
+
+function sessionPREvents(){
+  return (state.session.entries||[]).filter(e=>e.prType).slice(0,4);
+}
+function prLabelFor(entry){
+  if(!entry?.prType) return '';
+  if(entry.prType==='weight') return `Record poids · ${entry.poids} kg`;
+  if(entry.prType==='reps') return `Record reps · ${entry.reps} reps à ${entry.poids} kg`;
+  return entry.prLabel || 'Nouveau record';
+}
+function celebratePR(entry){
+  if(!entry?.prType || typeof document==='undefined') return;
+  try{ navigator.vibrate?.([45,35,90]); }catch{}
+  const burst=document.createElement('div');
+  burst.className='pr-burst';
+  burst.innerHTML=`<div class="pr-burst-card"><div class="pr-burst-kicker">NEW PR</div><h2>${esc(entry.nom)}</h2><p>${esc(prLabelFor(entry))}</p><div class="pr-burst-stats"><span>${entry.poids} kg</span><span>${entry.reps} reps</span><span>1RM ${Number(entry.rm1reel)||oneRM(entry.poids,entry.reps)}</span></div></div>`;
+  document.body.appendChild(burst);
+  window.setTimeout(()=>burst.classList.add('is-out'),1500);
+  window.setTimeout(()=>burst.remove(),2100);
+}
 function currentSessionList(){
   const e=state.session.entries||[], c=state.session.cardio||[];
   if(!e.length && !c.length) return `<div class="empty">Aucun exercice. Lance-toi.</div>`;
-  return `<div class="list">${e.map(entryCard).join('')}${c.map(cardioItem).join('')}</div><div class="card session-total"><div class="between"><span class="muted">Volume séance</span><strong>${Math.round(e.reduce((s,x)=>s+volume(x),0))} kg</strong></div></div>`;
+  const prs=sessionPREvents();
+  const prPanel=prs.length?`<div class="pr-strip"><div><span>Records séance</span><strong>${prs.length} PR détecté${prs.length>1?'s':''}</strong></div>${prs.map(x=>`<button class="pr-mini" data-action="exercise-open" data-name="${esc(x.nom)}"><b>NEW PR</b><small>${esc(x.nom)} · ${esc(prLabelFor(x))}</small></button>`).join('')}</div>`:'';
+  return `${prPanel}<div class="list session-timeline">${e.map(entryCard).join('')}${c.map(cardioItem).join('')}</div><div class="card session-total"><div class="between"><span class="muted">Volume séance</span><strong>${Math.round(e.reduce((s,x)=>s+volume(x),0))} kg</strong></div></div>`;
 }
 function entryCard(e){
   const rm=Number(e.rm1reel)||oneRM(e.poids,e.reps);
   const open = !!state.ui.entryOpen?.[e.id];
-  return `<div class="entry-swipe" data-entry-id="${e.id}"><div class="swipe-delete-bg">Supprimer</div><div class="item entry-item"><button class="entry-head" data-action="entry-toggle" data-id="${e.id}"><div><div class="item-title">${esc(e.nom)}</div><div class="meta">${esc(e.groupe||'')} · série ${e.series} · ${e.reps} reps · ${e.poids} kg</div></div><span class="badge blue">1RM ${rm}</span><span class="chev">${open?'⌄':'›'}</span></button><div class="entry-body ${open?'':'hidden'}"><div class="entry-actions"><button class="btn small icon-text" data-action="exercise-open" data-name="${esc(e.nom)}">${icon('book')} Fiche</button><button class="btn small icon-text" data-action="entry-edit" data-id="${e.id}">${icon('edit')} Modifier</button><button class="btn small ok" data-action="rest-edit" data-name="${esc(e.nom)}">Repos</button><button class="btn small danger icon-text" data-action="entry-delete" data-id="${e.id}">${icon('delete')} Suppr.</button></div></div></div></div>`;
+  const isPR=!!e.prType;
+  const prBadge=isPR?`<span class="badge pr-badge">NEW PR</span>`:'';
+  const prLine=isPR?`<div class="pr-entry-line"><span>Performance débloquée</span><b>${esc(prLabelFor(e))}</b></div>`:'';
+  return `<div class="entry-swipe ${isPR?'has-pr':''}" data-entry-id="${e.id}"><div class="swipe-delete-bg">Supprimer</div><div class="item entry-item"><button class="entry-head" data-action="entry-toggle" data-id="${e.id}"><div><div class="item-title">${esc(e.nom)}</div><div class="meta">${esc(e.groupe||'')} · série ${e.series} · ${e.reps} reps · ${e.poids} kg</div>${prLine}</div><span class="entry-badges">${prBadge}<span class="badge blue">1RM ${rm}</span></span><span class="chev">${open?'⌄':'›'}</span></button><div class="entry-body ${open?'':'hidden'}"><div class="entry-actions"><button class="btn small icon-text" data-action="exercise-open" data-name="${esc(e.nom)}">${icon('book')} Fiche</button><button class="btn small icon-text" data-action="entry-edit" data-id="${e.id}">${icon('edit')} Modifier</button><button class="btn small ok" data-action="rest-edit" data-name="${esc(e.nom)}">Repos</button><button class="btn small danger icon-text" data-action="entry-delete" data-id="${e.id}">${icon('delete')} Suppr.</button></div></div></div></div>`;
 }
 
 function cardioForm(){ return `<section class="card"><div class="field"><label>Type cardio</label><div class="chips">${['marche','course','velo','escalier'].map(t=>`<button class="chip ${cardioType===t?'is-active':''}" data-cardio-type="${t}">${t}</button>`).join('')}</div></div><div class="grid-3"><div class="field"><label>Durée</label>${stepper('c-duration',20,5)}</div><div class="field"><label>${cardioType==='velo'?'Résistance':cardioType==='escalier'?'Étages':'Vitesse'}</label>${stepper('c-main', cardioType==='velo'?5:cardioType==='escalier'?20:6, cardioType==='velo'||cardioType==='escalier'?1:0.5)}</div><div class="field"><label>${cardioType==='velo'?'RPM':cardioType==='escalier'?'Intensité':'Pente %'}</label>${stepper('c-extra', cardioType==='velo'?80:0, cardioType==='velo'?5:1)}</div></div><button class="btn primary full" data-action="cardio-add">✓ Ajouter cardio</button></section><section><div class="section-title"><h2>Séance en cours</h2></div>${currentSessionList()}</section>`; }
@@ -375,16 +401,21 @@ function addEntry(){
   const previousMaxWeight = maxWeightFor(m.nom);
   const previousMaxRepsAtWeight = maxRepsForWeight(m.nom, formDraft.poids);
   const entry={id:uid(),nom:m.nom,groupe:m.groupe,icon:m.icon,poids:formDraft.poids,series:formDraft.series||1,reps:formDraft.reps||1,rm1reel:formDraft.rm?Number(formDraft.rm):null,createdAt:new Date().toISOString()};
-  entry.rm1est=oneRM(entry.poids,entry.reps); state.session.entries.unshift(entry); updateRecords(entry);
+  entry.rm1est=oneRM(entry.poids,entry.reps);
   const weightRecord = previousMaxWeight !== null && Number(entry.poids) > Number(previousMaxWeight);
   const repsRecord = previousMaxRepsAtWeight !== null && Number(entry.reps) > Number(previousMaxRepsAtWeight);
+  if(weightRecord){ entry.prType='weight'; entry.prLabel=`Record poids · ${entry.poids} kg`; }
+  else if(repsRecord){ entry.prType='reps'; entry.prLabel=`Record reps · ${entry.reps} reps à ${entry.poids} kg`; }
+  if(entry.prType) entry.prCreatedAt=new Date().toISOString();
+  state.session.entries.unshift(entry); updateRecords(entry);
   formDraft.series = Math.min((formDraft.series||1)+1, 99); formDraft.rm='';
   rememberFollowDraft(m.nom);
   persist();
-  if(weightRecord) toast(` Nouveau record poids : ${entry.poids} kg`, 'ok');
-  else if(repsRecord) toast(` Nouveau record reps à ${entry.poids} kg : ${entry.reps}`, 'ok');
+  if(entry.prType) toast(`NEW PR — ${prLabelFor(entry)}`, 'ok');
   else toast('Série ajoutée','ok');
-  startTimer(getTimerFor(m.nom), m.nom); render();
+  render();
+  startTimer(getTimerFor(m.nom), m.nom);
+  if(entry.prType) celebratePR(entry);
 }
 function addCardio(){ const duration=Number($('#c-duration')?.value)||0; const main=Number($('#c-main')?.value)||0; const extra=Number($('#c-extra')?.value)||0; const label = cardioType==='velo' ? `rés. ${main} · ${extra} rpm` : cardioType==='escalier' ? `${main} étages` : `${main} km/h · pente ${extra}%`; state.session.cardio.unshift({id:uid(),type:cardioType,duration,main,extra,label,createdAt:new Date().toISOString()}); persist(); toast('Cardio ajouté','ok'); render(); }
 async function saveSession(){ if(!state.session.entries.length && !state.session.cardio.length) return toast('Séance vide','warn'); const day=todayKey(); const prev=state.history[day] || {entries:[],cardio:[]}; state.history[day]={entries:[...state.session.entries,...(prev.entries||[])], cardio:[...state.session.cardio,...(prev.cardio||[])]}; state.session={entries:[],cardio:[]}; state.ui.followMode=null; formDraft.series=1; persist(); toast('Séance sauvegardée','ok'); setRoute('history'); }
