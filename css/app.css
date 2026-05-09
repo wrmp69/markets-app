@@ -122,3 +122,56 @@ select,input,textarea{background:#fffaf3;border-color:rgba(11,27,51,.12);color:v
 /* Remove the old neon/glow feel */
 .kpi strong{color:var(--copper)}.badge.ac{color:var(--copper);border-color:rgba(184,121,58,.24);background:#fff6ea}.badge.blue{color:var(--navy);border-color:rgba(11,27,51,.14);background:#f2e7d9}.timer-card{background:#fffaf3;color:var(--navy);border-color:rgba(11,27,51,.12)}.ring-fg,.mini-fg{stroke:var(--copper)}.timer-mini{background:#fffaf3;color:var(--navy);border-color:rgba(184,121,58,.28)}
 @media(min-width:820px){.premium-session{grid-template-columns:430px 1fr}.premium-session>.premium-focus{grid-column:1/-1}.premium-form{align-self:start}.exercise-book.refined{width:min(94vw,920px)}}
+
+
+/* ===== Premium Dark Theme ===== */
+
+html:not(.light){
+  --bg:#0f1720;
+  --surface:#17212b;
+  --surface2:#1e2b38;
+  --line:#2c3a47;
+
+  --text:#edf2f7;
+  --muted:#8ea0b5;
+
+  --accent:#c48a5a;
+  --danger:#ef4444;
+  --ok:#22c55e;
+  --blue:#60a5fa;
+  --purple:#a78bfa;
+
+  --premium-line:rgba(255,255,255,.06);
+
+  background:
+    radial-gradient(circle at 20% -10%,rgba(196,138,90,.12),transparent 32%),
+    radial-gradient(circle at 90% 18%,rgba(96,165,250,.08),transparent 28%),
+    var(--bg);
+}
+
+html:not(.light) body{
+  background:transparent;
+}
+
+html:not(.light) .glass-card,
+html:not(.light) .card,
+html:not(.light) .item,
+html:not(.light) .kpi{
+  background:
+    linear-gradient(
+      145deg,
+      rgba(255,255,255,.035),
+      rgba(255,255,255,.015)
+    );
+  border-color:rgba(255,255,255,.06);
+}
+
+html:not(.light) .premium-focus{
+  background:
+    linear-gradient(
+      135deg,
+      rgba(196,138,90,.18),
+      rgba(96,165,250,.10) 55%,
+      rgba(255,255,255,.02)
+    );
+}
