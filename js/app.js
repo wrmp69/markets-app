@@ -229,6 +229,39 @@ function templateList(){
 }
 
 function sessionView(){ return `<div class="tabs"><button class="tab ${sessionTab==='muscu'?'is-active':''}" data-action="session-tab" data-tab="muscu">Muscu</button><button class="tab ${sessionTab==='cardio'?'is-active':''}" data-action="session-tab" data-tab="cardio">Cardio</button></div>${sessionTab==='cardio' ? cardioForm() : muscuView()}`; }
+function liveDashboard(){
+  const entries=state.session.entries||[];
+
+  if(!entries.length){
+    return `<div class="live-dashboard empty-dashboard"><span>🚀 La séance commence</span></div>`;
+  }
+
+  const startedAt=entries.at(-1)?.createdAt;
+  const mins=startedAt?Math.max(1,Math.round((Date.now()-new Date(startedAt).getTime())/60000)):0;
+
+  const volumeTotal=entries.reduce((s,e)=>s+volume(e),0);
+
+  const groups=[...new Set(entries.map(e=>e.groupe).filter(Boolean))];
+
+  let records=0;
+
+  entries.forEach(e=>{
+    const max=maxWeightFor(e.nom);
+    if(Number(e.poids)>=Number(max)) records++;
+  });
+
+  let fatigue='🟢 Frais';
+  if(volumeTotal>12000) fatigue='🟠 Fatigué';
+  if(volumeTotal>22000) fatigue='🔴 Très fatigué';
+
+  return `<div class="live-dashboard">
+    <div class="live-kpi"><span>⏱ Temps</span><b>${mins} min</b></div>
+    <div class="live-kpi"><span>🏋️ Volume</span><b>${Math.round(volumeTotal)} kg</b></div>
+    <div class="live-kpi"><span>🏆 Records</span><b>${records}</b></div>
+    <div class="live-kpi"><span>😵 Fatigue</span><b>${fatigue}</b></div>
+    <div class="live-groups">${groups.map(g=>`<span>${g}</span>`).join('')}</div>
+  </div>`;
+}
 function muscuView(){
   const m=defaultMachine();
   selectedMachineName = m?.nom || selectedMachineName;
@@ -241,7 +274,7 @@ function muscuView(){
  const reps = formDraft.reps ?? activeFollowDraft?.reps ?? last?.reps ?? 10;
  const rm = formDraft.rm ?? activeFollowDraft?.rm ?? '';
  const rpe = formDraft.rpe ?? activeFollowDraft?.rpe ?? '';
-  return `<div class="desktop-2"><section class="card"><div class="field"><label>Groupe musculaire</label><div class="chips"><button class="chip ${groupFilter===''?'is-active':''}" data-group="">Tout</button>${groups().map(g=>`<button class="chip ${groupFilter===g?'is-active':''}" data-group="${esc(g)}">${GROUP_ICONS[g]||'📌'} ${esc(g)}</button>`).join('')}</div></div>
+  return `${liveDashboard()}<div class="desktop-2"><section class="card"><div class="field"><label>Groupe musculaire</label><div class="chips"><button class="chip ${groupFilter===''?'is-active':''}" data-group="">Tout</button>${groups().map(g=>`<button class="chip ${groupFilter===g?'is-active':''}" data-group="${esc(g)}">${GROUP_ICONS[g]||'📌'} ${esc(g)}</button>`).join('')}</div></div>
   <div class="field"><label>Exercice</label><div class="select-row"><select id="machine-select">${filteredMachines().map(x=>`<option value="${esc(x.nom)}" ${x.nom===m?.nom?'selected':''}>${x.icon||'🏋️'} ${esc(x.nom)}</option>`).join('')}</select><button class="btn small" data-action="video-open" title="Vidéo">📹</button><button class="btn small" data-action="machine-edit">✎</button><button class="btn small" data-action="machine-new">+</button></div></div>
   <div id="machine-hint" class="exercise-insights"></div>
   <div class="grid-2"><div class="field"><label>Poids</label>${stepper('poids', poids, Number(m?.step||0.5))}</div><div class="field"><label>Série actuelle</label>${stepper('series', series, 1)}</div></div>
