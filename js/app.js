@@ -524,7 +524,7 @@ function renderBodyMap(){
   const rows=zones.map(z=>`<button class="body-row ${z.worst?.tone||'empty'}" data-action="body-focus" data-groups="${esc(z.groups.join('|'))}"><span>${esc(z.label)}</span><b>${esc(z.worst?.status||'—')}</b><small>${z.sets} série(s) · ${z.ago===null?'jamais':`J-${z.ago}`}</small></button>`).join('');
   return `<section class="bodymap-card human-card card"><div class="section-title no-margin"><div><div class="eyebrow">Vue corps humain</div><h2>Récupération musculaire</h2></div><span class="body-score">${esc(headline)}</span></div><div class="bodymap-layout human-layout"><div class="body-figure human-figure">${bodyHumanSvg(zones)}</div><div class="body-list">${rows}</div></div><p class="muted small-text body-help">Clique directement une zone du corps. Néon = prêt, orange = chargé, rouge = en retard.</p></section>`;
 }
-function openBodyFocusfunction openBodyFocus(groupsStr=''){
+function openBodyFocus(groupsStr=''){
   const selected=String(groupsStr).split('|').filter(Boolean);
   const stats=selected.map(g=>muscleStats(g,30));
   const title=selected.join(' / ')||'Groupe musculaire';
