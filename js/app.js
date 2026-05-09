@@ -23,7 +23,7 @@ let detailChart = null;
 let exerciseDetailName = null;
 let exerciseMetric = 'weight';
 let exerciseRange = 'all';
-let exerciseDetailTab = 'analyse';
+let exerciseBookTab = 'analyse';
 let statsMode = 'trend';
 let statsRange = 'month';
 let statsMetric = 'weight';
@@ -111,13 +111,15 @@ function exerciseDetailView(){
   const name=exerciseDetailName||selectedMachineName, m=machineByName(name), rows=detailRowsFiltered(name), allRows=detailRowsForExercise(name), ai=progressionAIFor(name);
   const bestWeight=allRows.length?Math.max(...allRows.map(e=>Number(e.poids)||0)):0, bestRM=allRows.length?Math.max(...allRows.map(e=>Number(e.rm1reel)||oneRM(e.poids,e.reps))):0;
   const bestSet=bestSetForRows(allRows), avgRpe=rpeAverage(allRows), warm=warmupSuggestionFor(name);
-  const prs=detailPRTimeline(name);
-  const analyseHtml=`<section class="premium-ai glass-card"><div class="ai-title"><span>🎯 Objectif conseillé</span><h3>${esc(ai.title)}</h3></div><p>${esc(ai.text)}</p><div class="ai-options"><div><b>Option 1</b><strong>${esc(ai.optionA)}</strong></div><div><b>Option 2</b><strong>${esc(ai.optionB)}</strong></div></div></section><section class="detail-grid"><div class="kpi glass-card"><strong>${bestWeight||'—'}</strong><span>Record kg</span></div><div class="kpi glass-card"><strong>${bestRM||'—'}</strong><span>Meilleur 1RM</span></div><div class="kpi glass-card"><strong>${bestSet?`${bestSet.poids}×${bestSet.reps}`:'—'}</strong><span>Meilleure série</span></div><div class="kpi glass-card"><strong>${avgRpe||'—'}</strong><span>RPE moyen</span></div></section>${warm?`<section class="analysis-card glass-card"><h3>🔥 Échauffement conseillé</h3><p>${warm}</p></section>`:''}`;
-  const progressionHtml=`<section class="analysis-card glass-card"><h3>📈 Tendance</h3><p>${esc(ai.signal)} · ${esc(ai.label)}</p><div class="chips detail-ranges"><button class="chip ${exerciseMetric==='weight'?'is-active':''}" data-action="exercise-metric" data-metric="weight">Poids</button><button class="chip ${exerciseMetric==='reps'?'is-active':''}" data-action="exercise-metric" data-metric="reps">Reps</button><button class="chip ${exerciseMetric==='rm'?'is-active':''}" data-action="exercise-metric" data-metric="rm">1RM</button></div><div class="chips detail-ranges"><button class="chip ${exerciseRange==='week'?'is-active':''}" data-action="exercise-range" data-range="week">7j</button><button class="chip ${exerciseRange==='month'?'is-active':''}" data-action="exercise-range" data-range="month">30j</button><button class="chip ${exerciseRange==='year'?'is-active':''}" data-action="exercise-range" data-range="year">1 an</button><button class="chip ${exerciseRange==='all'?'is-active':''}" data-action="exercise-range" data-range="all">Tout</button></div><div class="chart-box"><canvas id="exercise-chart"></canvas></div></section><section class="analysis-card glass-card"><h3>🏆 Timeline records</h3>${prs.length?`<div class="pr-list">${prs.map(e=>`<div class="pr-item"><span>🏆</span><div><b>${e.poids} kg</b><small>${e.date==='session'?'Séance en cours':esc(e.date)} · ${e.reps} reps</small></div></div>`).join('')}</div>`:`<p class="muted">Aucun record détecté.</p>`}</section>`;
-  const historiqueHtml=`<section class="analysis-card glass-card"><h3>Historique récent</h3>${rows.length?`<div class="list">${rows.slice(-14).reverse().map(e=>`<div class="item between"><div><div class="item-title">${e.poids} kg × ${e.reps}</div><div class="meta">${e.date==='session'?'Séance en cours':esc(e.date)} · série ${e.series}</div></div><span class="badge blue">1RM ${Number(e.rm1reel)||oneRM(e.poids,e.reps)}</span></div>`).join('')}</div>`:`<p class="muted">Pas encore de données.</p>`}</section>`;
-  const tabHtml=exerciseDetailTab==='progression'?progressionHtml:exerciseDetailTab==='historique'?historiqueHtml:analyseHtml;
-  if(exerciseDetailTab==='progression') setTimeout(renderExerciseChart,0);
-  return `<div class="premium-detail"><section class="detail-hero glass-card"><div class="between"><div><div class="eyebrow">Fiche exercice</div><h2>${m?.icon||'🏋️'} ${esc(name||'Exercice')}</h2><p>Groupe : ${esc(m?.groupe||'—')} · Matériel : Machine</p></div><button class="btn small secondary" data-action="exercise-back">Retour</button></div></section><div class="detail-tabs"><button class="${exerciseDetailTab==='analyse'?'is-active':''}" data-action="exercise-tab" data-tab="analyse">Analyse</button><button class="${exerciseDetailTab==='progression'?'is-active':''}" data-action="exercise-tab" data-tab="progression">Progression</button><button class="${exerciseDetailTab==='historique'?'is-active':''}" data-action="exercise-tab" data-tab="historique">Historique</button></div>${tabHtml}</div>`;
+  setTimeout(renderExerciseChart,0);
+  return `<div class="premium-detail"><section class="detail-hero glass-card"><div class="between"><div><div class="eyebrow">Fiche exercice</div><h2>${m?.icon||'🏋️'} ${esc(name||'Exercice')}</h2><p>Groupe : ${esc(m?.groupe||'—')} · Matériel : Machine</p></div><button class="btn small secondary" data-action="exercise-back">Retour</button></div></section>
+  <div class="detail-tabs"><button class="is-active">Analyse</button><button>Progression</button><button>Historique</button></div>
+  <section class="premium-ai glass-card"><div class="ai-title"><span>🎯 Objectif conseillé</span><h3>${esc(ai.title)}</h3></div><p>${esc(ai.text)}</p><div class="ai-options"><div><b>Option 1</b><strong>${esc(ai.optionA)}</strong></div><div><b>Option 2</b><strong>${esc(ai.optionB)}</strong></div></div></section>
+  <section class="detail-grid"><div class="kpi glass-card"><strong>${bestWeight||'—'}</strong><span>Record kg</span></div><div class="kpi glass-card"><strong>${bestRM||'—'}</strong><span>Meilleur 1RM</span></div><div class="kpi glass-card"><strong>${bestSet?`${bestSet.poids}×${bestSet.reps}`:'—'}</strong><span>Meilleure série</span></div><div class="kpi glass-card"><strong>${avgRpe||'—'}</strong><span>RPE moyen</span></div></section>
+  ${warm?`<section class="analysis-card glass-card"><h3>🔥 Échauffement conseillé</h3><p>${warm}</p></section>`:''}
+  <section class="analysis-card glass-card"><h3>📈 Tendance</h3><p>${esc(ai.signal)} · ${esc(ai.label)}</p><div class="chart-box"><canvas id="exercise-chart"></canvas></div></section>
+  <section class="analysis-card glass-card"><h3>🏆 Timeline records</h3>${detailPRTimeline(name).length?`<div class="pr-list">${detailPRTimeline(name).map(e=>`<div class="pr-item"><span>🏆</span><div><b>${e.poids} kg</b><small>${e.date==='session'?'Séance en cours':esc(e.date)} · ${e.reps} reps</small></div></div>`).join('')}</div>`:`<p class="muted">Aucun record détecté.</p>`}</section>
+  <section class="analysis-card glass-card"><h3>Historique récent</h3>${rows.length?`<div class="list">${rows.slice(-10).reverse().map(e=>`<div class="item between"><div><div class="item-title">${e.poids} kg × ${e.reps}</div><div class="meta">${e.date==='session'?'Séance en cours':esc(e.date)} · série ${e.series}</div></div><span class="badge blue">1RM ${Number(e.rm1reel)||oneRM(e.poids,e.reps)}</span></div>`).join('')}</div>`:`<p class="muted">Pas encore de données.</p>`}</section></div>`;
 }
 function renderExerciseChart(){
   const canvas=$('#exercise-chart'); if(!canvas||!window.Chart) return; if(detailChart) detailChart.destroy();
@@ -125,6 +127,61 @@ function renderExerciseChart(){
   const values=rows.map(e=>exerciseMetric==='reps'?Number(e.reps):exerciseMetric==='rm'?(Number(e.rm1reel)||oneRM(e.poids,e.reps)):Number(e.poids));
   const labels=rows.map(e=>e.date==='session'?'Now':String(e.date).slice(5));
   detailChart=new Chart(canvas,{type:'line',data:{labels,datasets:[{label:exerciseMetric,data:values,tension:.35,fill:true}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{ticks:{color:muted,maxRotation:0}},y:{ticks:{color:muted}}}}});
+}
+
+function exerciseProfile(name){
+  const rows=detailRowsForExercise(name), bestSet=bestSetForRows(rows);
+  const bestWeight=rows.length?Math.max(...rows.map(e=>Number(e.poids)||0)):0;
+  const bestRM=rows.length?Math.max(...rows.map(e=>Number(e.rm1reel)||oneRM(e.poids,e.reps))):0;
+  const avgReps=rows.length?Math.round(rows.reduce((s,e)=>s+(Number(e.reps)||0),0)/rows.length):0;
+  const last=lastEntryFor(name);
+  return {rows,bestSet,bestWeight,bestRM,avgReps,last};
+}
+function recoveryAdviceFor(name){
+  const rows=entriesForExercise(name).filter(e=>Number(e.poids)>0&&Number(e.reps)>0);
+  const todayRows=(state.session.entries||[]).filter(e=>e.nom===name);
+  const last=lastEntryFor(name);
+  const rpes=rows.map(e=>Number(e.rpe)).filter(Boolean);
+  const avgRpe=rpes.length?Math.round((rpes.reduce((a,b)=>a+b,0)/rpes.length)*10)/10:null;
+  const load=todayRows.reduce((s,e)=>s+volume(e),0);
+  let level='🟢 Frais', text='Aucun signal fort de fatigue. Tu peux travailler normalement.';
+  if(todayRows.length>=4||load>6000){ level='🟠 Chargé'; text='Tu as déjà pas mal sollicité cet exercice aujourd’hui. Garde la technique propre et évite de forcer inutilement.'; }
+  if(avgRpe&&avgRpe>=9){ level='🔴 Très exigeant'; text='RPE moyen élevé : privilégie une séance propre, éventuellement plus légère.'; }
+  return {level,text,avgRpe,last};
+}
+function technicalAdviceFor(name){
+  const n=(name||'').toLowerCase();
+  if(n.includes('chest')||n.includes('pec')||n.includes('développé')) return ['Garde les omoplates serrées et basses.','Contrôle la descente, évite de rebondir.','Pousse sans décoller les épaules en fin de mouvement.'];
+  if(n.includes('curl')) return ['Coudes fixes, évite de balancer le buste.','Descente lente : c’est là que tu gagnes beaucoup.','Monte seulement si tu gardes la même trajectoire.'];
+  if(n.includes('tirage')||n.includes('traction')) return ['Tire avec les coudes, pas seulement avec les mains.','Garde la cage sortie et contrôle le retour.','Évite de tirer trop lourd si l’amplitude diminue.'];
+  if(n.includes('leg')||n.includes('squat')||n.includes('presse')) return ['Amplitude propre avant la charge.','Garde les genoux stables dans l’axe.','Ne verrouille pas violemment en haut.'];
+  return ['Priorité à l’amplitude propre.','Monte la charge seulement si la technique reste stable.','Garde 1 à 2 reps en réserve sur les séries de travail.'];
+}
+function exerciseBookContent(name){
+  const m=machineByName(name), ai=progressionAIFor(name), profile=exerciseProfile(name), warm=warmupSuggestionFor(name), rec=recoveryAdviceFor(name);
+  const recent=profile.rows.slice(-12).reverse();
+  if(exerciseBookTab==='progression'){
+    return `<div class="book-section"><h3>📈 Tendance</h3><p>${esc(ai.signal||ai.label)} · ${esc(ai.text||'')}</p><div class="book-ai ${ai.level}"><span>${esc(ai.label)}</span><b>${esc(ai.optionA||'Objectif propre')}</b><small>${esc(ai.optionB||'')}</small></div></div>
+    <div class="book-section"><h3>🏆 Records récents</h3>${detailPRTimeline(name).length?`<div class="book-list">${detailPRTimeline(name).map(e=>`<div><b>${e.poids} kg</b><span>${e.date==='session'?'Séance en cours':esc(e.date)} · ${e.reps} reps</span></div>`).join('')}</div>`:`<p class="muted">Aucun record détecté.</p>`}</div>`;
+  }
+  if(exerciseBookTab==='historique'){
+    return `<div class="book-section"><h3>📋 Historique détaillé</h3>${recent.length?`<div class="book-list">${recent.map(e=>`<div><b>${e.poids} kg × ${e.reps}</b><span>${e.date==='session'?'Séance en cours':esc(e.date)} · série ${e.series} · 1RM ${Number(e.rm1reel)||oneRM(e.poids,e.reps)}</span></div>`).join('')}</div>`:`<p class="muted">Pas encore de données.</p>`}</div>`;
+  }
+  return `<div class="book-section"><h3>👤 Ton profil sur cet exercice</h3><div class="book-kpis"><div><b>${profile.bestWeight||'—'}</b><span>Record kg</span></div><div><b>${profile.bestRM||'—'}</b><span>Meilleur 1RM</span></div><div><b>${profile.bestSet?`${profile.bestSet.poids}×${profile.bestSet.reps}`:'—'}</b><span>Meilleure série</span></div><div><b>${profile.avgReps||'—'}</b><span>Reps moy.</span></div></div></div>
+  <div class="book-section"><h3>🎯 Objectif conseillé</h3><div class="book-ai ${ai.level}"><span>${esc(ai.label)}</span><b>${esc(ai.optionA||'Objectif propre')}</b><small>${esc(ai.optionB||'')}</small><em>${esc(ai.text||'')}</em></div></div>
+  <div class="book-section"><h3>🔥 Échauffement conseillé</h3><p>${warm?esc(warm):'Pas nécessaire pour une charge légère ou pas assez de données.'}</p></div>
+  <div class="book-section"><h3>😮‍💨 Fatigue & récupération</h3><p><b>${rec.level}</b> — ${esc(rec.text)}</p></div>
+  <div class="book-section"><h3>🧠 Conseils techniques</h3><ul>${technicalAdviceFor(name).map(x=>`<li>${esc(x)}</li>`).join('')}</ul></div>`;
+}
+function openExerciseBook(name){
+  exerciseDetailName=name||selectedMachineName||$('#machine-select')?.value;
+  const m=machineByName(exerciseDetailName);
+  $('#modal-root').innerHTML=`<div class="book-backdrop"><article class="exercise-book">
+    <button class="book-close" data-action="book-close">×</button>
+    <section class="book-cover"><div class="eyebrow">Exercice PRO</div><h2>${m?.icon||'🏋️'} ${esc(exerciseDetailName||'Exercice')}</h2><p>${esc(m?.groupe||'')} · Analyse personnelle</p></section>
+    <nav class="book-tabs"><button class="${exerciseBookTab==='analyse'?'is-active':''}" data-action="exercise-book-tab" data-tab="analyse">Analyse</button><button class="${exerciseBookTab==='progression'?'is-active':''}" data-action="exercise-book-tab" data-tab="progression">Progression</button><button class="${exerciseBookTab==='historique'?'is-active':''}" data-action="exercise-book-tab" data-tab="historique">Historique</button></nav>
+    <section class="book-pages"><div class="book-page left"><h3>Résumé</h3><p>${esc(progressionAIFor(exerciseDetailName).title||'Analyse')}</p><p class="muted">Repos conseillé : ${getTimerFor(exerciseDetailName)}s</p></div><div class="book-page right">${exerciseBookContent(exerciseDetailName)}</div></section>
+  </article></div>`;
 }
 
 function getFollowDraft(name){ return state.ui?.followDrafts?.[name] || null; }
@@ -320,15 +377,13 @@ function saveEntryEdit(id){
 function initSwipeDelete(){
   $$('.entry-swipe').forEach(wrap=>{
     let startX=0, dx=0, dragging=false; const card=wrap.querySelector('.entry-item');
-    if(!card) return;
-    card.style.transform='translateX(0)';
-    wrap.classList.remove('is-swiping');
     wrap.onpointerdown=e=>{ if(e.target.closest('button')) return; startX=e.clientX; dx=0; dragging=true; wrap.classList.add('is-swiping'); card.style.transition='none'; };
     wrap.onpointermove=e=>{ if(!dragging) return; dx=e.clientX-startX; if(dx<0){ card.style.transform=`translateX(${Math.max(dx,-115)}px)`; } };
-    wrap.onpointerup=()=>{ if(!dragging) return; dragging=false; wrap.classList.remove('is-swiping'); card.style.transition='transform .18s ease'; if(dx<-90){ const id=wrap.dataset.entryId; state.session.entries=state.session.entries.filter(x=>x.id!==id); persist(); render(); toast('Série supprimée','ok'); } else card.style.transform='translateX(0)'; };
-    wrap.onpointercancel=()=>{ dragging=false; wrap.classList.remove('is-swiping'); card.style.transition='transform .18s ease'; card.style.transform='translateX(0)'; };
+    wrap.onpointerup=()=>{ if(!dragging) return; dragging=false; wrap.classList.remove('is-swiping'); card.style.transition='transform .18s ease'; if(dx<-90){ const id=wrap.dataset.entryId; state.session.entries=state.session.entries.filter(x=>x.id!==id); persist(); render(); toast('Série supprimée','ok'); } else card.style.transform=''; };
+    wrap.onpointercancel=()=>{ dragging=false; wrap.classList.remove('is-swiping'); card.style.transform=''; };
   });
 }
+
 async function editRest(name){ const val=prompt(`Temps de repos pour ${name} (secondes)`, getTimerFor(name)); if(val===null) return; const n=Number(val); if(!n || n<5) return toast('Temps invalide','warn'); state.timers[name]=n; persist(); toast('Repos mémorisé','ok'); render(); }
 
 function bindEvents(){ document.addEventListener('click', async e=>{
@@ -356,9 +411,10 @@ function bindEvents(){ document.addEventListener('click', async e=>{
   if(action==='template-delete' && await confirmModal('Supprimer ce template ?')){ state.templates=state.templates.filter(t=>t.id!==el.dataset.id); persist(); render(); }
   if(action==='follow-pick'){ captureForm(); rememberFollowDraft(selectedMachineName); selectedMachineName=el.dataset.name; const saved=getFollowDraft(selectedMachineName); const last=lastEntryFor(selectedMachineName); formDraft=saved ? {...saved} : {poids:last?.poids ?? machineByName(selectedMachineName)?.poids?.[0] ?? 20, series:1, reps:last?.reps ?? 10, rm:''}; persist(); render(); }
   if(action==='follow-stop'){ state.ui.followMode=null; persist(); render(); }
-  if(action==='exercise-open'){ exerciseDetailName=el.dataset.name || $('#machine-select')?.value || selectedMachineName; selectedMachineName=exerciseDetailName; exerciseDetailTab='analyse'; setRoute('exercise'); }
+  if(action==='exercise-open'){ exerciseBookTab='analyse'; openExerciseBook(el.dataset.name || $('#machine-select')?.value || selectedMachineName); }
   if(action==='exercise-back'){ setRoute('session'); }
-  if(action==='exercise-tab'){ exerciseDetailTab=el.dataset.tab||'analyse'; render(); }
+  if(action==='book-close'){ $('#modal-root').innerHTML=''; }
+  if(action==='exercise-book-tab'){ exerciseBookTab=el.dataset.tab||'analyse'; openExerciseBook(exerciseDetailName); }
   if(action==='machine-new') machineModal(null);
   if(action==='video-open'){ const url=videoUrl(currentMachine()); url ? window.open(url,'_blank') : toast('Aucune vidéo pour cet exercice','warn'); }
   if(action==='machine-edit') machineModal($('#machine-select')?.value);
