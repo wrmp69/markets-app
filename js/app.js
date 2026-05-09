@@ -237,6 +237,49 @@ function openExerciseBook(name){
 function getFollowDraft(name){ return state.ui?.followDrafts?.[name] || null; }
 function rememberFollowDraft(name=selectedMachineName){ if(!state.ui?.followMode || !name) return; state.ui.followDrafts ||= {}; state.ui.followDrafts[name] = {...formDraft}; }
 function getTimerFor(name){ return Number(state.timers?.[name] || state.settings.timerDefault || 60); }
+function exerciseFamilyFor(name=''){
+  const m=machineByName(name), g=(m?.groupe||'').toLowerCase(), n=String(name).toLowerCase();
+  if(/curl|triceps|extension|élévation|elevation|fly|pec fly|abduct|adduct|mollet/.test(n)) return 'isolation';
+  if(/squat|presse|hack|leg|développé|developpe|press|tirage|rowing|traction|smith/.test(n)) return 'compound';
+  if(g.includes('jambes')||g.includes('dos')||g.includes('pectoraux')) return 'compound';
+  return 'standard';
+}
+function clampRest(v){ return Math.max(30, Math.min(180, Math.round(v/5)*5)); }
+function smartRestFor(name, entry=null, flags={}){
+  const manual=state.timers && Object.prototype.hasOwnProperty.call(state.timers,name);
+  const manualValue=Number(state.timers?.[name]);
+  if(manual && manualValue>0) return {seconds:manualValue,label:'Repos mémorisé',reason:'Réglage perso',tone:'manual',manual:true,details:['Réglage personnalisé']};
+  const m=machineByName(name), family=exerciseFamilyFor(name), groupe=(m?.groupe||entry?.groupe||'').toLowerCase();
+  const rows=entriesForExercise(name).filter(e=>Number(e.poids)>0&&Number(e.reps)>0);
+  const baseDefault=Number(state.settings.timerDefault||60);
+  let seconds=baseDefault;
+  const details=[];
+  if(family==='compound'){ seconds=Math.max(seconds,90); details.push('exercice lourd'); }
+  if(family==='isolation'){ seconds=Math.min(seconds,60); details.push('isolation'); }
+  if(groupe.includes('jambes')||groupe.includes('dos')){ seconds=Math.max(seconds,100); if(!details.includes('exercice lourd')) details.push('gros groupe'); }
+  const poids=Number(entry?.poids ?? formDraft.poids ?? $('#poids')?.value ?? 0);
+  const reps=Number(entry?.reps ?? formDraft.reps ?? $('#reps')?.value ?? 0);
+  const rpe=Number(entry?.rpe ?? 0);
+  const maxW=maxWeightFor(name)||poids;
+  const heavy=maxW&&poids>=maxW*.9;
+  if(heavy&&poids>0){ seconds+=20; details.push('charge haute'); }
+  if(reps>0&&reps<=6){ seconds+=25; details.push('force'); }
+  if(reps>=15){ seconds-=10; details.push('série longue'); }
+  if(rpe>=9){ seconds+=30; details.push('RPE haut'); }
+  else if(rpe>=8){ seconds+=15; details.push('RPE modéré'); }
+  if(flags.weightRecord||flags.repsRecord||entry?.prType){ seconds+=25; details.push('record'); }
+  const todayRows=(state.session.entries||[]).filter(e=>e.nom===name);
+  if(todayRows.length>=4){ seconds+=15; details.push('fatigue locale'); }
+  const final=clampRest(seconds);
+  let tone='smart', label='Repos intelligent', reason=details.slice(0,2).join(' + ')||'standard';
+  if(final>=120){ tone='long'; label='Repos long'; }
+  else if(final<=45){ tone='short'; label='Repos court'; }
+  return {seconds:final,label,reason,details,tone,manual:false};
+}
+function smartRestCard(name, entry=null){
+  const rest=smartRestFor(name, entry);
+  return `<div class="smart-rest-card ${rest.tone}"><span>${icon('clock')} ${esc(rest.label)}</span><b>${rest.seconds}s</b><em>${esc(rest.reason)}</em></div>`;
+}
 function updateRecords(entry){ const prev=Number(state.records[entry.nom]||0); if(Number(entry.poids)>prev) state.records[entry.nom]=Number(entry.poids); }
 function defaultMachine(){ return machineByName(selectedMachineName) || filteredMachines()[0] || allMachines()[0]; }
 function currentMachine(){ return machineByName($('#machine-select')?.value) || defaultMachine(); }
@@ -272,9 +315,9 @@ function liveDashboard(){
   const currentRows=entries.filter(e=>e.nom===name), startedAt=entries.at(-1)?.createdAt;
   const mins=startedAt?Math.max(1,Math.round((Date.now()-new Date(startedAt).getTime())/60000)):0;
   const last=currentRows[0], best=maxRepsForWeight(name,Number($('#poids')?.value||formDraft.poids||last?.poids||0));
-  const recordPossible=best&&Number(formDraft.reps)>=best, rest=getTimerFor(name);
+  const recordPossible=best&&Number(formDraft.reps)>=best, rest=smartRestFor(name);
   if(!entries.length&&!state.ui.followMode) return `<section class="premium-focus empty"><div class="focus-head"><span class="focus-icon">${icon('strength')}</span><div><b>Prêt</b><span>${goal?`Objectif : ${goal.main}`:'Choisis un exercice et lance ta première série.'}</span></div></div></section>`;
-  return `<section class="premium-focus"><button class="focus-arrow icon-only" data-action="exercise-open" data-name="${esc(name||'')}" title="Ouvrir la fiche">${icon('chevron')}</button><div class="focus-head"><span class="focus-icon">${icon('strength')}</span><div><h2>${esc(name||'Exercice')}</h2><p>${goal?esc(goal.main):'Objectif : démarre proprement'}</p></div></div><div class="focus-pills"><span>${icon('clock')}${mins||'—'} min</span><span>${icon('clock')}Repos ${rest}s</span><span>${recordPossible?'Record possible':ai?.signal||'Stable'}</span></div></section>`;
+  return `<section class="premium-focus"><button class="focus-arrow icon-only" data-action="exercise-open" data-name="${esc(name||'')}" title="Ouvrir la fiche">${icon('chevron')}</button><div class="focus-head"><span class="focus-icon">${icon('strength')}</span><div><h2>${esc(name||'Exercice')}</h2><p>${goal?esc(goal.main):'Objectif : démarre proprement'}</p></div></div><div class="focus-pills"><span>${icon('clock')}${mins||'—'} min</span><span>${icon('clock')}${rest.seconds}s · ${esc(rest.label)}</span><span>${recordPossible?'Record possible':ai?.signal||'Stable'}</span></div></section>`;
 }
 function muscuView(){
   const m=defaultMachine(); selectedMachineName=m?.nom||selectedMachineName;
@@ -430,7 +473,7 @@ function entryCard(e){
   const isPR=!!e.prType;
   const prBadge=isPR?`<span class="badge pr-badge">NEW PR</span>`:'';
   const prLine=isPR?`<div class="pr-entry-line"><span>Performance débloquée</span><b>${esc(prLabelFor(e))}</b></div>`:'';
-  return `<div class="entry-swipe ${isPR?'has-pr':''}" data-entry-id="${e.id}"><div class="swipe-delete-bg">Supprimer</div><div class="item entry-item"><button class="entry-head" data-action="entry-toggle" data-id="${e.id}"><div><div class="item-title">${esc(e.nom)}</div><div class="meta">${esc(e.groupe||'')} · série ${e.series} · ${e.reps} reps · ${e.poids} kg</div>${prLine}</div><span class="entry-badges">${prBadge}<span class="badge blue">1RM ${rm}</span></span><span class="chev">${open?'⌄':'›'}</span></button><div class="entry-body ${open?'':'hidden'}"><div class="entry-actions"><button class="btn small icon-text" data-action="exercise-open" data-name="${esc(e.nom)}">${icon('book')} Fiche</button><button class="btn small icon-text" data-action="entry-edit" data-id="${e.id}">${icon('edit')} Modifier</button><button class="btn small ok" data-action="rest-edit" data-name="${esc(e.nom)}">Repos</button><button class="btn small danger icon-text" data-action="entry-delete" data-id="${e.id}">${icon('delete')} Suppr.</button></div></div></div></div>`;
+  return `<div class="entry-swipe ${isPR?'has-pr':''}" data-entry-id="${e.id}"><div class="swipe-delete-bg">Supprimer</div><div class="item entry-item"><button class="entry-head" data-action="entry-toggle" data-id="${e.id}"><div><div class="item-title">${esc(e.nom)}</div><div class="meta">${esc(e.groupe||'')} · série ${e.series} · ${e.reps} reps · ${e.poids} kg</div>${prLine}${restLine}</div><span class="entry-badges">${prBadge}<span class="badge blue">1RM ${rm}</span></span><span class="chev">${open?'⌄':'›'}</span></button><div class="entry-body ${open?'':'hidden'}"><div class="entry-actions"><button class="btn small icon-text" data-action="exercise-open" data-name="${esc(e.nom)}">${icon('book')} Fiche</button><button class="btn small icon-text" data-action="entry-edit" data-id="${e.id}">${icon('edit')} Modifier</button><button class="btn small ok" data-action="rest-edit" data-name="${esc(e.nom)}">Repos</button><button class="btn small danger icon-text" data-action="entry-delete" data-id="${e.id}">${icon('delete')} Suppr.</button></div></div></div></div>`;
 }
 
 function cardioForm(){ return `<section class="card"><div class="field"><label>Type cardio</label><div class="chips">${['marche','course','velo','escalier'].map(t=>`<button class="chip ${cardioType===t?'is-active':''}" data-cardio-type="${t}">${t}</button>`).join('')}</div></div><div class="grid-3"><div class="field"><label>Durée</label>${stepper('c-duration',20,5)}</div><div class="field"><label>${cardioType==='velo'?'Résistance':cardioType==='escalier'?'Étages':'Vitesse'}</label>${stepper('c-main', cardioType==='velo'?5:cardioType==='escalier'?20:6, cardioType==='velo'||cardioType==='escalier'?1:0.5)}</div><div class="field"><label>${cardioType==='velo'?'RPM':cardioType==='escalier'?'Intensité':'Pente %'}</label>${stepper('c-extra', cardioType==='velo'?80:0, cardioType==='velo'?5:1)}</div></div><button class="btn primary full" data-action="cardio-add">✓ Ajouter cardio</button></section><section><div class="section-title"><h2>Séance en cours</h2></div>${currentSessionList()}</section>`; }
@@ -565,7 +608,7 @@ function renderChart(){
   labels=rows.map(r=>r.date?.slice(5)||''); values=rows.map(r=>r.value);
   chart=new Chart(canvas,{type:'line',data:{labels,datasets:[{label:statsTitle(),data:values,tension:.25}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{ticks:{color:muted,maxRotation:0}},y:{ticks:{color:muted}}}}});
 }
-function settingsView(){ return `<div class="grid"><section class="card"><div class="field"><label>Prénom</label><input id="setting-name" value="${esc(state.settings.userName||'Kevin')}"></div><div class="field"><label>Timer repos par défaut</label><input id="setting-timer" type="number" min="15" step="5" value="${Number(state.settings.timerDefault||60)}"></div><button class="btn primary full" data-action="settings-save">Sauvegarder</button></section><section class="card"><div class="section-title no-margin"><h2>Données</h2></div><button class="btn full" data-action="export-json">Exporter JSON</button><label class="btn full import-label">Importer JSON<input id="import-json" type="file" accept="application/json"></label></section><section class="card danger-zone"><div class="section-title no-margin"><h2>Danger</h2></div><button class="btn danger full" data-action="reset-all">Tout réinitialiser</button></section></div>`; }
+function settingsView(){ return `<div class="grid"><section class="card"><div class="field"><label>Prénom</label><input id="setting-name" value="${esc(state.settings.userName||'Kevin')}"></div><div class="field"><label>Base repos intelligent</label><input id="setting-timer" type="number" min="15" step="5" value="${Number(state.settings.timerDefault||60)}"><p class="muted small-text">L'app adapte ensuite selon charge, reps, PR et fatigue locale.</p></div><button class="btn primary full" data-action="settings-save">Sauvegarder</button></section><section class="card"><div class="section-title no-margin"><h2>Données</h2></div><button class="btn full" data-action="export-json">Exporter JSON</button><label class="btn full import-label">Importer JSON<input id="import-json" type="file" accept="application/json"></label></section><section class="card danger-zone"><div class="section-title no-margin"><h2>Danger</h2></div><button class="btn danger full" data-action="reset-all">Tout réinitialiser</button></section></div>`; }
 
 function render(){ $('#today-label').textContent=new Date().toLocaleDateString('fr-FR',{day:'numeric',month:'long'}); $('#page-title').textContent=titles[route]||'GymLog'; view.innerHTML = ({home,session:sessionView,history:historyView,stats:statsView,settings:settingsView,exercise:exerciseDetailView}[route]||home)(); afterRender(); }
 function afterRender(){ const select=$('#machine-select'); if(select){ select.addEventListener('change', () => { captureForm(); rememberFollowDraft(selectedMachineName); selectedMachineName=select.value; const saved=getFollowDraft(selectedMachineName); const last=lastEntryFor(select.value); const m=machineByName(select.value); formDraft=saved ? {...saved} : {poids:last?.poids ?? m?.poids?.[0] ?? 20, series:1, reps:last?.reps ?? 10, rm:''}; render(); }); updateMachineHint(); } const se=$('#stats-exercise'); if(se) se.addEventListener('change',()=>{selectedMachineName=se.value; render();}); const sm=$('#stats-metric'); if(sm) sm.addEventListener('change',()=>{statsMetric=sm.value; render();}); initSwipeDelete(); initFollowDrag(); }
@@ -573,8 +616,9 @@ function videoUrl(m){ if(!m?.video) return ''; return m.video.startsWith('http')
 function updateMachineHint(){
   const m=currentMachine(), el=$('#machine-hint'); if(!el) return; if(!m){el.innerHTML=''; return;}
   const currentWeight=Number($('#poids')?.value??formDraft.poids??0), rows=entriesForExercise(m.nom), last=lastEntryFor(m.nom), maxReps=maxRepsForWeight(m.nom,currentWeight), ai=progressionAIFor(m.nom);
-  if(!rows.length){ el.innerHTML=`<div class="premium-goal"><span> Objectif conseillé</span><b>Démarre proprement</b><em>Aucun historique pour cet exercice.</em></div>`; return; }
-  el.innerHTML=`<div class="premium-goal ${ai.level}"><span>${icon('target')} ${ai.level==='up'?'Montée possible':'Objectif conseillé'}</span><b>${esc(ai.optionA||'Objectif propre')}</b><em>${esc(ai.text||'')}</em></div><div class="insight-card"><span>Dernière fois</span><b>${last?`${last.poids} kg × ${last.reps}`:'—'}</b></div><div class="insight-card"><span>Max à ${currentWeight||'—'} kg</span><b>${maxReps?`${maxReps} reps`:'—'}</b></div><button class="analysis-link" data-action="exercise-open" data-name="${esc(m.nom)}">${icon('book')} Voir analyse complète</button>`;
+  const rest=smartRestFor(m.nom);
+  if(!rows.length){ el.innerHTML=`<div class="premium-goal"><span>${icon('target')} Objectif conseillé</span><b>Démarre proprement</b><em>Aucun historique pour cet exercice.</em></div>${smartRestCard(m.nom)}`; return; }
+  el.innerHTML=`<div class="premium-goal ${ai.level}"><span>${icon('target')} ${ai.level==='up'?'Montée possible':'Objectif conseillé'}</span><b>${esc(ai.optionA||'Objectif propre')}</b><em>${esc(ai.text||'')}</em></div><div class="insight-card"><span>Dernière fois</span><b>${last?`${last.poids} kg × ${last.reps}`:'—'}</b></div><div class="insight-card"><span>Max à ${currentWeight||'—'} kg</span><b>${maxReps?`${maxReps} reps`:'—'}</b></div>${smartRestCard(m.nom)}<button class="analysis-link" data-action="exercise-open" data-name="${esc(m.nom)}">${icon('book')} Voir analyse complète</button>`;
 }
 function captureForm(){
   if($('#poids')){
@@ -595,6 +639,9 @@ function addEntry(){
   if(weightRecord){ entry.prType='weight'; entry.prLabel=`Record poids · ${entry.poids} kg`; }
   else if(repsRecord){ entry.prType='reps'; entry.prLabel=`Record reps · ${entry.reps} reps à ${entry.poids} kg`; }
   if(entry.prType) entry.prCreatedAt=new Date().toISOString();
+  const restPlan=smartRestFor(m.nom, entry, {weightRecord,repsRecord});
+  entry.restSuggested=restPlan.seconds;
+  entry.restReason=restPlan.reason;
   state.session.entries.unshift(entry); updateRecords(entry);
   formDraft.series = Math.min((formDraft.series||1)+1, 99); formDraft.rm='';
   rememberFollowDraft(m.nom);
@@ -602,7 +649,7 @@ function addEntry(){
   if(entry.prType) toast(`NEW PR — ${prLabelFor(entry)}`, 'ok');
   else toast('Série ajoutée','ok');
   render();
-  startTimer(getTimerFor(m.nom), m.nom);
+  startTimer(restPlan.seconds, `${m.nom} · ${restPlan.reason}`);
   if(entry.prType) celebratePR(entry);
 }
 function addCardio(){ const duration=Number($('#c-duration')?.value)||0; const main=Number($('#c-main')?.value)||0; const extra=Number($('#c-extra')?.value)||0; const label = cardioType==='velo' ? `rés. ${main} · ${extra} rpm` : cardioType==='escalier' ? `${main} étages` : `${main} km/h · pente ${extra}%`; state.session.cardio.unshift({id:uid(),type:cardioType,duration,main,extra,label,createdAt:new Date().toISOString()}); persist(); toast('Cardio ajouté','ok'); render(); }
@@ -717,7 +764,17 @@ function initSwipeDelete(){
   });
 }
 
-async function editRest(name){ const val=prompt(`Temps de repos pour ${name} (secondes)`, getTimerFor(name)); if(val===null) return; const n=Number(val); if(!n || n<5) return toast('Temps invalide','warn'); state.timers[name]=n; persist(); toast('Repos mémorisé','ok'); render(); }
+async function editRest(name){
+  const current=state.timers?.[name] ?? '';
+  const val=prompt(`Temps de repos manuel pour ${name} (secondes)
+Laisse vide pour revenir au repos intelligent.`, current);
+  if(val===null) return;
+  if(String(val).trim()===''){ delete state.timers[name]; persist(); toast('Repos intelligent réactivé','ok'); render(); return; }
+  const n=Number(val);
+  if(!n || n<5) return toast('Temps invalide','warn');
+  state.timers[name]=n;
+  persist(); toast('Repos mémorisé','ok'); render();
+}
 
 function bindEvents(){ document.addEventListener('click', async e=>{
   const routeBtn=e.target.closest('[data-route]'); if(routeBtn) return setRoute(routeBtn.dataset.route);
