@@ -118,26 +118,57 @@ function warmupSuggestionFor(name){
   return sets.map(s => `${s.poids}×${s.reps}`).join(' · ');
 }
 
+function workoutBucketsForExercise(name){
+  const buckets=[];
+  Object.entries(state.history||{}).forEach(([date,day])=>{
+    const rows=(day.entries||[]).filter(e=>e.nom===name&&Number(e.poids)>0&&Number(e.reps)>0);
+    if(rows.length) buckets.push({date,rows:rows.slice().sort((a,b)=>(Number(a.series)||0)-(Number(b.series)||0)||new Date(a.createdAt||0)-new Date(b.createdAt||0))});
+  });
+  const current=(state.session.entries||[]).filter(e=>e.nom===name&&Number(e.poids)>0&&Number(e.reps)>0);
+  if(current.length) buckets.push({date:'session',rows:current.slice().sort((a,b)=>(Number(a.series)||0)-(Number(b.series)||0)||new Date(a.createdAt||0)-new Date(b.createdAt||0))});
+  return buckets.sort((a,b)=>a.date==='session'?1:b.date==='session'?-1:a.date.localeCompare(b.date));
+}
+
+function progressionAIFor(name){
+  const buckets=workoutBucketsForExercise(name), rows=entriesForExercise(name).filter(e=>Number(e.poids)>0&&Number(e.reps)>0);
+  const machine=machineByName(name), step=Number(machine?.step||2.5);
+  if(rows.length<3||buckets.length<2) return {level:'learn',score:35,label:'🧠 IA en apprentissage',headline:'Encore un peu de données',advice:'Fais 2-3 séances sur cet exercice pour que la recommandation devienne fiable.',action:'Garde une exécution propre.',target:null,detail:'Historique encore court.'};
+
+  const latest=buckets.at(-1), prev=buckets.at(-2), recent=buckets.slice(-4);
+  const latestRows=latest.rows, prevRows=prev.rows;
+  const targetWeight=Math.max(...latestRows.map(e=>Number(e.poids)||0));
+  const targetRows=latestRows.filter(e=>Number(e.poids)===targetWeight);
+  const reps=targetRows.map(e=>Number(e.reps)||0).filter(Boolean);
+  const avg=a=>a.length?a.reduce((s,x)=>s+x,0)/a.length:0;
+  const avgRpe=avg(latestRows.map(e=>Number(e.rpe)).filter(Boolean));
+  const prevBestRM=Math.max(0,...prevRows.map(e=>Number(e.rm1reel)||oneRM(e.poids,e.reps)));
+  const lastBestRM=Math.max(0,...latestRows.map(e=>Number(e.rm1reel)||oneRM(e.poids,e.reps)));
+  const rmDelta=lastBestRM-prevBestRM;
+  const prevSame=prevRows.filter(e=>Number(e.poids)===targetWeight);
+  const prevReps=prevSame.length?prevSame.map(e=>Number(e.reps)||0):prevRows.map(e=>Number(e.reps)||0);
+  const repDelta=avg(reps)-avg(prevReps);
+  const hard=avgRpe>=9, veryHard=avgRpe>=9.5;
+  const goodVolume=reps.length>=3&&Math.min(...reps)>=8;
+  const easyEnough=!avgRpe||avgRpe<=8;
+  const recentTargetSets=rows.filter(e=>Number(e.poids)===targetWeight).slice(-9);
+  const validated=recentTargetSets.filter(e=>(Number(e.reps)||0)>=8&&(!e.rpe||Number(e.rpe)<=8)).length>=3;
+  const noProgress=recent.length>=3&&recent.map(b=>Math.max(...b.rows.map(e=>Number(e.rm1reel)||oneRM(e.poids,e.reps)))).slice(-3).every((v,i,a)=>i===0||v<=a[0]+1);
+  const downTrend=rmDelta<-2||repDelta<-1.5;
+  const nextWeight=Math.round((targetWeight+step)*10)/10;
+  const deloadWeight=Math.max(0,Math.round((targetWeight*0.9)*10)/10);
+  const lastReps=reps.length?reps:latestRows.map(e=>Number(e.reps)||0).filter(Boolean);
+  const targetReps=lastReps.map((r,i)=>i===lastReps.length-1?r+1:r).join(' / ');
+
+  if(veryHard&&downTrend) return {level:'deload',score:25,label:'🔴 Deload conseillé',headline:'Fatigue détectée',advice:`Baisse à ${deloadWeight} kg aujourd’hui et garde 2-3 reps en réserve.`,action:`${deloadWeight} kg · 8 / 8 / 8 reps`,target:{poids:deloadWeight,reps:'8 / 8 / 8'},detail:`RPE haut + performance en baisse (${rmDelta>0?'+':''}${Math.round(rmDelta)} 1RM).`};
+  if(hard) return {level:'hold',score:45,label:'🟠 Maintien intelligent',headline:'Charge exigeante',advice:`Garde ${targetWeight} kg et cherche une série plus propre avant de monter.`,action:`${targetWeight} kg · ${targetReps} reps`,target:{poids:targetWeight,reps:targetReps},detail:`RPE moyen ${Math.round(avgRpe*10)/10}.`};
+  if(validated&&goodVolume&&easyEnough) return {level:'up',score:88,label:'🟢 Monte la charge',headline:'Progression validée',advice:`Tu peux tenter ${nextWeight} kg sur la prochaine série/séance.`,action:`${nextWeight} kg · ${Math.max(5,Math.round(Math.max(...reps)*0.75))} reps`,target:{poids:nextWeight,reps:Math.max(5,Math.round(Math.max(...reps)*0.75))},detail:`Plusieurs séries validées à ${targetWeight} kg sans RPE haut.`};
+  if(noProgress&&avgRpe>=8) return {level:'stagnation',score:40,label:'🟡 Stagnation',headline:'Ne force pas la montée',advice:`Reste à ${targetWeight} kg et vise +1 rep ou un meilleur contrôle.`,action:`${targetWeight} kg · ${targetReps} reps`,target:{poids:targetWeight,reps:targetReps},detail:'Pas de progression nette sur les dernières séances.'};
+  if(rmDelta>1||repDelta>0) return {level:'progress',score:72,label:'📈 Bonne tendance',headline:'Continue comme ça',advice:`Reste sur ${targetWeight} kg et ajoute 1 rep sur la dernière série.`,action:`${targetWeight} kg · ${targetReps} reps`,target:{poids:targetWeight,reps:targetReps},detail:`Tendance positive (${rmDelta>0?'+':''}${Math.round(rmDelta)} 1RM).`};
+  return {level:'steady',score:58,label:'⚖️ Progression contrôlée',headline:'Séance normale',advice:`Garde ${targetWeight} kg et valide toutes les séries proprement.`,action:`${targetWeight} kg · ${targetReps} reps`,target:{poids:targetWeight,reps:targetReps},detail:'Aucun signal fort de fatigue ou de montée.'};
+}
+
 function progressionAdviceFor(name){
-  const rows = entriesForExercise(name)
-    .filter(e => Number(e.poids) > 0 && Number(e.reps) > 0)
-    .sort((a,b) => new Date(a.createdAt || 0) - new Date(b.createdAt || 0));
-  if(rows.length < 3) return null;
-  const last = latestWorkoutEntriesFor(name);
-  if(!last.length) return null;
-  const machine = machineByName(name);
-  const step = Number(machine?.step || 2.5);
-  const targetWeight = Math.max(...last.map(e => Number(e.poids) || 0));
-  const recentAtWeight = rows.filter(e => Number(e.poids) === targetWeight).slice(-6);
-  const goodSets = recentAtWeight.filter(e => Number(e.reps) >= 10).length;
-  const lastRpe = [...rows].reverse().find(e => e.rpe)?.rpe;
-  if(goodSets >= 3 && (!lastRpe || Number(lastRpe) <= 8)){
-    return `Tu valides souvent ${targetWeight} kg : prochaine étape possible ${Math.round((targetWeight + step)*10)/10} kg.`;
-  }
-  if(lastRpe && Number(lastRpe) >= 9){
-    return `Dernier ressenti dur (RPE ${lastRpe}) : garde le même poids et vise une rep propre.`;
-  }
-  return `Garde le poids cible et essaie d’ajouter 1 rep sur la dernière série.`;
+  return progressionAIFor(name)?.advice || null;
 }
 
 function muscleBalance(daysBack=30){
@@ -248,6 +279,7 @@ function exerciseDetailView(){
   const goal=getExerciseGoal(name);
   const warm=warmupSuggestionFor(name);
   const advice=progressionAdviceFor(name);
+  const ai=progressionAIFor(name);
   setTimeout(renderExerciseChart,0);
   return `<div class="grid">
     <section class="card exercise-hero">
@@ -259,7 +291,7 @@ function exerciseDetailView(){
       <div class="kpi"><strong>${bestSet?`${bestSet.poids}×${bestSet.reps}`:'—'}</strong><span>Meilleure série</span></div>
       <div class="kpi"><strong>${avgRpe||'—'}</strong><span>RPE moyen</span></div>
     </section>
-    <section class="card">${goal?`<div class="detail-goal"><span>🎯 Objectif</span><b>${goal.main}</b>${goal.alt?`<small>Option lourde : ${goal.alt}</small>`:''}<em>${goal.reason}</em></div>`:''}${warm?`<div class="detail-line"><span>🔥 Échauffement</span><b>${warm}</b></div>`:''}${advice?`<div class="detail-line"><span>🧠 Conseil</span><b>${esc(advice)}</b></div>`:''}</section>
+    <section class="card">${ai?`<div class="detail-ai ${ai.level}"><span>${ai.label}</span><h3>${esc(ai.headline)}</h3><b>${esc(ai.action||ai.advice)}</b><em>${esc(ai.detail||'')}</em><div class="ai-meter"><i style="width:${Math.max(5,Math.min(100,ai.score||50))}%"></i></div></div>`:''}${goal?`<div class="detail-goal"><span>🎯 Objectif</span><b>${goal.main}</b>${goal.alt?`<small>Option lourde : ${goal.alt}</small>`:''}<em>${goal.reason}</em></div>`:''}${warm?`<div class="detail-line"><span>🔥 Échauffement</span><b>${warm}</b></div>`:''}${advice?`<div class="detail-line"><span>🧠 Conseil</span><b>${esc(advice)}</b></div>`:''}</section>
     <section class="card"><div class="section-title no-margin"><h2>Progression</h2></div>
       <div class="chips"><button class="chip ${exerciseMetric==='weight'?'is-active':''}" data-action="exercise-metric" data-metric="weight">Poids</button><button class="chip ${exerciseMetric==='reps'?'is-active':''}" data-action="exercise-metric" data-metric="reps">Reps</button><button class="chip ${exerciseMetric==='rm'?'is-active':''}" data-action="exercise-metric" data-metric="rm">1RM</button></div>
       <div class="chips detail-ranges"><button class="chip ${exerciseRange==='week'?'is-active':''}" data-action="exercise-range" data-range="week">7j</button><button class="chip ${exerciseRange==='month'?'is-active':''}" data-action="exercise-range" data-range="month">30j</button><button class="chip ${exerciseRange==='year'?'is-active':''}" data-action="exercise-range" data-range="year">1 an</button><button class="chip ${exerciseRange==='all'?'is-active':''}" data-action="exercise-range" data-range="all">Tout</button></div>
@@ -312,7 +344,7 @@ function templateList(){
 function sessionView(){ return `<div class="tabs"><button class="tab ${sessionTab==='muscu'?'is-active':''}" data-action="session-tab" data-tab="muscu">Muscu</button><button class="tab ${sessionTab==='cardio'?'is-active':''}" data-action="session-tab" data-tab="cardio">Cardio</button></div>${sessionTab==='cardio' ? cardioForm() : muscuView()}`; }
 function liveDashboard(){
   const entries=state.session.entries||[], m=defaultMachine();
-  const name=m?.nom||selectedMachineName, goal=name?getExerciseGoal(name):null;
+  const name=m?.nom||selectedMachineName, goal=name?getExerciseGoal(name):null, ai=name?progressionAIFor(name):null;
   const currentRows=entries.filter(e=>e.nom===name);
   const startedAt=entries.at(-1)?.createdAt;
   const mins=startedAt?Math.max(1,Math.round((Date.now()-new Date(startedAt).getTime())/60000)):0;
@@ -324,20 +356,21 @@ function liveDashboard(){
   const rest=getTimerFor(name);
 
   if(!entries.length&&!fm){
-    return `<div class="coach-dashboard"><div class="coach-main"><b>🚀 Prêt</b><span>Choisis un exercice et lance ta première série.</span></div></div>`;
+    return `<div class="coach-dashboard"><div class="coach-main"><b>🚀 Prêt</b><span>${ai?.headline||'Choisis un exercice et lance ta première série.'}</span></div>${ai?`<div class="coach-ai ${ai.level}"><span>${ai.label}</span><b>${esc(ai.action||ai.advice)}</b></div>`:''}</div>`;
   }
 
   return `<div class="coach-dashboard">
     <div class="coach-main">
       <b>🏋️ ${esc(name||'Exercice')}</b>
-      <span>${goal?`Objectif : ${goal.main}`:'Objectif : démarre proprement'}</span>
+      <span>${ai?.headline?`${ai.headline} · ${ai.action||ai.advice}`:(goal?`Objectif : ${goal.main}`:'Objectif : démarre proprement')}</span>
     </div>
     <div class="coach-grid">
       <div><span>⏱ Temps</span><b>${mins||'—'} min</b></div>
       <div><span>Repos</span><b>${rest}s</b></div>
       <div><span>État</span><b>${fatigue}</b></div>
-      <div><span>Signal</span><b>${recordPossible?'🔥 Record possible':'—'}</b></div>
+      <div><span>Signal</span><b>${recordPossible?'🔥 Record possible':(ai?.score?`${ai.score}%`:'—')}</b></div>
     </div>
+    ${ai?`<div class="coach-ai ${ai.level}"><span>${ai.label}</span><b>${esc(ai.advice)}</b><small>${esc(ai.detail||'')}</small></div>`:''}
     ${fm?`<div class="coach-note">📋 Restant : ${remaining.length?remaining.slice(0,3).map(esc).join(', '):'template terminé ✅'}</div>`:''}
   </div>`;
 }
@@ -445,6 +478,7 @@ function updateMachineHint(){
   const goal = getExerciseGoal(m.nom);
   const warmup = warmupSuggestionFor(m.nom);
   const advice = progressionAdviceFor(m.nom);
+  const ai = progressionAIFor(m.nom);
 
   if(!rows.length){
     el.innerHTML = `<div class="insight-empty">Aucun historique pour cet exercice.</div>`;
@@ -464,6 +498,7 @@ function updateMachineHint(){
         <em>${goal.reason}</em>
       </div>
     ` : ''}
+    ${ai ? `<div class="insight-ai ${ai.level}"><span>${ai.label}</span><b>${esc(ai.action||ai.advice)}</b><small>${esc(ai.detail||'')}</small></div>` : ''}
     ${warmup ? `<div class="insight-extra"><span>🔥 Échauffement</span><b>${warmup}</b></div>` : ''}
     ${advice ? `<div class="insight-extra"><span>🧠 Progression</span><b>${esc(advice)}</b></div>` : ''}
   `;

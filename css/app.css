@@ -54,3 +54,27 @@
 .detail-line b{font-size:13px;line-height:1.35}
 .detail-ranges{margin-top:8px}
 @media(min-width:520px){.exercise-kpis{grid-template-columns:repeat(4,1fr)}}
+
+/* IA progression */
+.coach-ai{margin-top:9px;background:var(--surface2);border:1px solid var(--line);border-radius:14px;padding:9px 10px;display:grid;gap:3px}
+.coach-ai span{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em}
+.coach-ai b{font-size:12px;line-height:1.35}
+.coach-ai small{font-size:11px;color:var(--muted)}
+.coach-ai.up,.coach-ai.progress{border-color:color-mix(in srgb,var(--ok) 45%,var(--line))}
+.coach-ai.deload{border-color:color-mix(in srgb,var(--danger) 55%,var(--line))}
+.coach-ai.hold,.coach-ai.stagnation{border-color:color-mix(in srgb,var(--accent) 55%,var(--line))}
+.insight-ai{grid-column:1/-1;background:linear-gradient(135deg,color-mix(in srgb,var(--blue) 12%,var(--surface)),var(--surface2));border:1px solid color-mix(in srgb,var(--blue) 45%,var(--line));border-radius:14px;padding:10px 12px;display:flex;flex-direction:column;gap:4px}
+.insight-ai span{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em}
+.insight-ai b{font-size:14px;line-height:1.35}
+.insight-ai small{font-size:12px;color:var(--muted)}
+.insight-ai.up,.insight-ai.progress{border-color:color-mix(in srgb,var(--ok) 55%,var(--line));background:color-mix(in srgb,var(--ok) 10%,var(--surface))}
+.insight-ai.deload{border-color:color-mix(in srgb,var(--danger) 55%,var(--line));background:color-mix(in srgb,var(--danger) 10%,var(--surface))}
+.detail-ai{border:1px solid color-mix(in srgb,var(--blue) 45%,var(--line));background:linear-gradient(135deg,color-mix(in srgb,var(--blue) 10%,var(--surface)),var(--surface));border-radius:16px;padding:12px;margin-bottom:10px;display:grid;gap:5px}
+.detail-ai span{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em}
+.detail-ai h3{margin:0;font-family:Syne,sans-serif;font-size:18px}
+.detail-ai b{font-size:14px}
+.detail-ai em{font-style:normal;color:var(--muted);font-size:12px}
+.detail-ai.up,.detail-ai.progress{border-color:color-mix(in srgb,var(--ok) 55%,var(--line))}
+.detail-ai.deload{border-color:color-mix(in srgb,var(--danger) 55%,var(--line))}
+.ai-meter{height:7px;background:var(--surface2);border-radius:999px;overflow:hidden;margin-top:3px}
+.ai-meter i{display:block;height:100%;background:var(--accent);border-radius:999px}
