@@ -78,3 +78,16 @@
 .detail-ai.deload{border-color:color-mix(in srgb,var(--danger) 55%,var(--line))}
 .ai-meter{height:7px;background:var(--surface2);border-radius:999px;overflow:hidden;margin-top:3px}
 .ai-meter i{display:block;height:100%;background:var(--accent);border-radius:999px}
+
+
+/* v8 nettoyage live : séance compacte, analyse complète dans fiche exercice */
+.coach-dashboard.compact{padding:10px 12px;margin-bottom:12px}
+.coach-dashboard.compact .coach-main{margin-bottom:7px}
+.coach-dashboard.compact .coach-main b{font-size:15px}
+.coach-dashboard.compact .coach-main span{font-size:13px}
+.coach-quick{display:flex;gap:6px;flex-wrap:wrap}
+.coach-quick span{border:1px solid var(--line);background:var(--surface2);border-radius:999px;padding:5px 8px;font-size:11px;color:var(--muted)}
+.insight-goal.compact{padding:9px 10px;gap:2px}
+.insight-goal.compact b{font-size:15px}
+.insight-more{grid-column:1/-1}
+.exercise-insights .insight-extra{display:none}

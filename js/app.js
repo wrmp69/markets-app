@@ -345,32 +345,20 @@ function sessionView(){ return `<div class="tabs"><button class="tab ${sessionTa
 function liveDashboard(){
   const entries=state.session.entries||[], m=defaultMachine();
   const name=m?.nom||selectedMachineName, goal=name?getExerciseGoal(name):null, ai=name?progressionAIFor(name):null;
-  const currentRows=entries.filter(e=>e.nom===name);
-  const startedAt=entries.at(-1)?.createdAt;
+  const currentRows=entries.filter(e=>e.nom===name), startedAt=entries.at(-1)?.createdAt;
   const mins=startedAt?Math.max(1,Math.round((Date.now()-new Date(startedAt).getTime())/60000)):0;
   const last=currentRows[0], best=maxRepsForWeight(name,Number($('#poids')?.value||formDraft.poids||last?.poids||0));
-  const recordPossible=best&&Number(formDraft.reps)>=best;
-  const rpeAvg=currentRows.length?Math.round(currentRows.reduce((s,e)=>s+Number(e.rpe||0),0)/currentRows.filter(e=>e.rpe).length||0):0;
-  const fatigue=rpeAvg>=9?'🔴 Très dur':rpeAvg>=8?'🟠 Fatigue':currentRows.length>=4?'🟡 Déjà chargé':'🟢 Frais';
+  const recordPossible=best&&Number(formDraft.reps)>=best, rest=getTimerFor(name);
   const fm=state.ui.followMode, remaining=fm?(fm.exercises||[]).map(x=>x.nom).filter(n=>entries.filter(e=>e.nom===n).length<3):[];
-  const rest=getTimerFor(name);
+  const signal=recordPossible?'🔥 Record possible':(ai?.level==='deload'?'⚠️ Allège':ai?.level==='up'?'📈 Monte bientôt':ai?.level==='hold'?'✅ Stable':'—');
 
   if(!entries.length&&!fm){
-    return `<div class="coach-dashboard"><div class="coach-main"><b>🚀 Prêt</b><span>${ai?.headline||'Choisis un exercice et lance ta première série.'}</span></div>${ai?`<div class="coach-ai ${ai.level}"><span>${ai.label}</span><b>${esc(ai.action||ai.advice)}</b></div>`:''}</div>`;
+    return `<div class="coach-dashboard compact"><div class="coach-main"><b>🚀 Prêt</b><span>${goal?`Objectif : ${goal.main}`:'Choisis un exercice et lance ta première série.'}</span></div></div>`;
   }
 
-  return `<div class="coach-dashboard">
-    <div class="coach-main">
-      <b>🏋️ ${esc(name||'Exercice')}</b>
-      <span>${ai?.headline?`${ai.headline} · ${ai.action||ai.advice}`:(goal?`Objectif : ${goal.main}`:'Objectif : démarre proprement')}</span>
-    </div>
-    <div class="coach-grid">
-      <div><span>⏱ Temps</span><b>${mins||'—'} min</b></div>
-      <div><span>Repos</span><b>${rest}s</b></div>
-      <div><span>État</span><b>${fatigue}</b></div>
-      <div><span>Signal</span><b>${recordPossible?'🔥 Record possible':(ai?.score?`${ai.score}%`:'—')}</b></div>
-    </div>
-    ${ai?`<div class="coach-ai ${ai.level}"><span>${ai.label}</span><b>${esc(ai.advice)}</b><small>${esc(ai.detail||'')}</small></div>`:''}
+  return `<div class="coach-dashboard compact">
+    <div class="coach-main"><b>🏋️ ${esc(name||'Exercice')}</b><span>${goal?`🎯 ${goal.main}`:'Objectif : démarre proprement'}</span></div>
+    <div class="coach-quick"><span>⏱ ${mins||'—'} min</span><span>Repos ${rest}s</span><span>${signal}</span></div>
     ${fm?`<div class="coach-note">📋 Restant : ${remaining.length?remaining.slice(0,3).map(esc).join(', '):'template terminé ✅'}</div>`:''}
   </div>`;
 }
@@ -465,42 +453,22 @@ function render(){ $('#today-label').textContent=new Date().toLocaleDateString('
 function afterRender(){ const select=$('#machine-select'); if(select){ select.addEventListener('change', () => { captureForm(); rememberFollowDraft(selectedMachineName); selectedMachineName=select.value; const saved=getFollowDraft(selectedMachineName); const last=lastEntryFor(select.value); const m=machineByName(select.value); formDraft=(state.ui.followMode && saved) ? {...saved} : {poids:preferredWeightForExercise(select.value) ?? last?.poids ?? m?.poids?.[0] ?? 20, series:1, reps:last?.reps ?? 10, rm:''}; render(); }); updateMachineHint(); } const se=$('#stats-exercise'); if(se) se.addEventListener('change',()=>{selectedMachineName=se.value; render();}); const sm=$('#stats-metric'); if(sm) sm.addEventListener('change',()=>{statsMetric=sm.value; render();}); initSwipeDelete(); }
 function videoUrl(m){ if(!m?.video) return ''; return m.video.startsWith('http') ? m.video : 'https://youtube.com/watch?v='+m.video; }
 function updateMachineHint(){
-  const m=currentMachine();
-  const el=$('#machine-hint');
+  const m=currentMachine(), el=$('#machine-hint');
   if(!el) return;
   if(!m){ el.innerHTML=''; return; }
-  const currentWeight = Number($('#poids')?.value ?? formDraft.poids ?? 0);
-  const rows = entriesForExercise(m.nom);
-  const maxW = rows.length ? Math.max(...rows.map(e=>Number(e.poids)||0)) : null;
-  const bestRM = rows.length ? Math.max(...rows.map(e=>Number(e.rm1reel)||oneRM(e.poids,e.reps))) : null;
-  const last = lastEntryFor(m.nom);
-  const maxReps = maxRepsForWeight(m.nom, currentWeight);
-  const goal = getExerciseGoal(m.nom);
-  const warmup = warmupSuggestionFor(m.nom);
-  const advice = progressionAdviceFor(m.nom);
-  const ai = progressionAIFor(m.nom);
+  const currentWeight=Number($('#poids')?.value??formDraft.poids??0);
+  const rows=entriesForExercise(m.nom), last=lastEntryFor(m.nom), maxReps=maxRepsForWeight(m.nom,currentWeight), goal=getExerciseGoal(m.nom);
 
   if(!rows.length){
-    el.innerHTML = `<div class="insight-empty">Aucun historique pour cet exercice.</div>`;
+    el.innerHTML=`<div class="insight-empty">Aucun historique pour cet exercice. <button class="btn small" data-action="exercise-open">Fiche</button></div>`;
     return;
   }
 
-  el.innerHTML = `
-    <div class="insight-card"><span>🏆 Record</span><b>${maxW || '—'} kg</b></div>
-    <div class="insight-card"><span>📈 Meilleur 1RM</span><b>${bestRM || '—'} kg</b></div>
-    <div class="insight-card"><span>🕒 Dernière fois</span><b>${last ? `${last.poids} kg × ${last.reps}` : '—'}</b></div>
-    <div class="insight-card"><span>🔥 Max à ${currentWeight || '—'} kg</span><b>${maxReps ? `${maxReps} reps` : '—'}</b></div>
-    ${goal ? `
-      <div class="insight-goal">
-        <span>🎯 Objectif conseillé</span>
-        <b>${goal.main}</b>
-        ${goal.alt ? `<small>Option lourde : ${goal.alt}</small>` : ''}
-        <em>${goal.reason}</em>
-      </div>
-    ` : ''}
-    ${ai ? `<div class="insight-ai ${ai.level}"><span>${ai.label}</span><b>${esc(ai.action||ai.advice)}</b><small>${esc(ai.detail||'')}</small></div>` : ''}
-    ${warmup ? `<div class="insight-extra"><span>🔥 Échauffement</span><b>${warmup}</b></div>` : ''}
-    ${advice ? `<div class="insight-extra"><span>🧠 Progression</span><b>${esc(advice)}</b></div>` : ''}
+  el.innerHTML=`
+    ${goal?`<div class="insight-goal compact"><span>🎯 Objectif conseillé</span><b>${goal.main}</b></div>`:''}
+    <div class="insight-card"><span>🕒 Dernière fois</span><b>${last?`${last.poids} kg × ${last.reps}`:'—'}</b></div>
+    <div class="insight-card"><span>🔥 Max à ${currentWeight||'—'} kg</span><b>${maxReps?`${maxReps} reps`:'—'}</b></div>
+    <button class="btn small full insight-more" data-action="exercise-open">📊 Voir analyse complète</button>
   `;
 }
 function captureForm(){
