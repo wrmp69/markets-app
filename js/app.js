@@ -320,7 +320,7 @@ function celebratePR(entry){
   try{ navigator.vibrate?.([45,35,90]); }catch{}
   const burst=document.createElement('div');
   burst.className='pr-burst';
-  burst.innerHTML=`<div class="pr-burst-card"><div class="pr-burst-kicker">NEW PR</div><h2>${esc(entry.nom)}</h2><p>${esc(prLabelFor(entry))}</p><div class="pr-burst-stats"><span>${entry.poids} kg</span><span>${entry.reps} reps</span><span>1RM ${Number(entry.rm1reel)||oneRM(entry.poids,entry.reps)}</span></div></div>`;
+  burst.innerHTML=`<div class="pr-burst-card"><div class="pr-burst-kicker">NEW PERSONAL RECORD</div><h2>${esc(entry.nom)}</h2><p>${esc(prLabelFor(entry))}</p><div class="pr-burst-stats"><span><small>Poids</small><b>${entry.poids} kg</b></span><span><small>Reps</small><b>${entry.reps}</b></span><span><small>1RM</small><b>${Number(entry.rm1reel)||oneRM(entry.poids,entry.reps)}</b></span></div></div>`;
   document.body.appendChild(burst);
   window.setTimeout(()=>burst.classList.add('is-out'),1500);
   window.setTimeout(()=>burst.remove(),2100);
@@ -329,7 +329,7 @@ function currentSessionList(){
   const e=state.session.entries||[], c=state.session.cardio||[];
   if(!e.length && !c.length) return `<div class="empty">Aucun exercice. Lance-toi.</div>`;
   const prs=sessionPREvents();
-  const prPanel=prs.length?`<div class="pr-strip"><div><span>Records séance</span><strong>${prs.length} PR détecté${prs.length>1?'s':''}</strong></div>${prs.map(x=>`<button class="pr-mini" data-action="exercise-open" data-name="${esc(x.nom)}"><b>NEW PR</b><small>${esc(x.nom)} · ${esc(prLabelFor(x))}</small></button>`).join('')}</div>`:'';
+  const prPanel=prs.length?`<div class="pr-strip"><div><span>Live records</span><strong>${prs.length} PR session</strong></div>${prs.map(x=>`<button class="pr-mini" data-action="exercise-open" data-name="${esc(x.nom)}"><b>NEW PR</b><small>${esc(x.nom)}</small><em>${esc(prLabelFor(x))}</em></button>`).join('')}</div>`:'';
   return `${prPanel}<div class="list session-timeline">${e.map(entryCard).join('')}${c.map(cardioItem).join('')}</div><div class="card session-total"><div class="between"><span class="muted">Volume séance</span><strong>${Math.round(e.reduce((s,x)=>s+volume(x),0))} kg</strong></div></div>`;
 }
 function entryCard(e){
