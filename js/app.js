@@ -12,6 +12,7 @@ state.timers ||= {};
 state.settings ||= {};
 state.settings.timerDefault ||= 60;
 state.bodyWeight ||= [];
+state.rpeLog ||= {};
 state.ui ||= { entryOpen: {}, followMode: null, followScroll: 0 };
 
 let route = 'home';
@@ -23,7 +24,7 @@ let statsMode = 'trend';
 let statsRange = 'month';
 let statsMetric = 'weight';
 let selectedMachineName = null;
-let formDraft = { poids: null, series: 1, reps: 10, rm: '' };
+let formDraft = { poids: null, series: 1, reps: 10, rm: '', rpe: '' };
 
 const titles = {home:'Accueil', session:'Séance', history:'Historique', stats:'Stats', settings:'Réglages'};
 const view = $('#view');
@@ -98,6 +99,104 @@ function getExerciseGoal(name){
     reason: `Dernière séance : ${sets} série${sets > 1 ? 's' : ''} à ${targetWeight} kg (${repsBySet.join(' / ')} reps)`
   };
 }
+
+function warmupSuggestionFor(name){
+  const goal = getExerciseGoal(name);
+  if(!goal) return null;
+  const target = Number(String(goal.main).match(/([\d.]+)\s*kg/)?.[1] || 0);
+  if(!target || target < 10) return null;
+  const round = v => Math.round(v * 2) / 2;
+  const sets = [
+    { poids: Math.max(2.5, round(target * 0.4)), reps: 12 },
+    { poids: Math.max(2.5, round(target * 0.6)), reps: 8 },
+    { poids: Math.max(2.5, round(target * 0.8)), reps: 4 }
+  ].filter((s, i, arr) => i === 0 || s.poids > arr[i - 1].poids);
+  return sets.map(s => `${s.poids}×${s.reps}`).join(' · ');
+}
+
+function progressionAdviceFor(name){
+  const rows = entriesForExercise(name)
+    .filter(e => Number(e.poids) > 0 && Number(e.reps) > 0)
+    .sort((a,b) => new Date(a.createdAt || 0) - new Date(b.createdAt || 0));
+  if(rows.length < 3) return null;
+  const last = latestWorkoutEntriesFor(name);
+  if(!last.length) return null;
+  const machine = machineByName(name);
+  const step = Number(machine?.step || 2.5);
+  const targetWeight = Math.max(...last.map(e => Number(e.poids) || 0));
+  const recentAtWeight = rows.filter(e => Number(e.poids) === targetWeight).slice(-6);
+  const goodSets = recentAtWeight.filter(e => Number(e.reps) >= 10).length;
+  const lastRpe = [...rows].reverse().find(e => e.rpe)?.rpe;
+  if(goodSets >= 3 && (!lastRpe || Number(lastRpe) <= 8)){
+    return `Tu valides souvent ${targetWeight} kg : prochaine étape possible ${Math.round((targetWeight + step)*10)/10} kg.`;
+  }
+  if(lastRpe && Number(lastRpe) >= 9){
+    return `Dernier ressenti dur (RPE ${lastRpe}) : garde le même poids et vise une rep propre.`;
+  }
+  return `Garde le poids cible et essaie d’ajouter 1 rep sur la dernière série.`;
+}
+
+function muscleBalance(daysBack=30){
+  const start = new Date(); start.setDate(start.getDate()-daysBack);
+  const counts = {};
+  Object.entries(state.history||{}).forEach(([date, day]) => {
+    if(new Date(date+'T00:00:00') < start) return;
+    (day.entries||[]).forEach(e => counts[e.groupe || 'Autres'] = (counts[e.groupe || 'Autres'] || 0) + 1);
+  });
+  (state.session.entries||[]).forEach(e => counts[e.groupe || 'Autres'] = (counts[e.groupe || 'Autres'] || 0) + 1);
+  return counts;
+}
+
+function renderMuscleBalance(){
+  const data = muscleBalance(30);
+  const total = Object.values(data).reduce((a,b)=>a+b,0);
+  if(!total) return `<section class="card"><div class="section-title no-margin"><h2>Équilibre musculaire</h2></div><div class="empty small-empty">Pas encore assez de données sur 30 jours.</div></section>`;
+  const rows = Object.entries(data).sort((a,b)=>b[1]-a[1]).map(([g,n]) => {
+    const pct = Math.round(n/total*100);
+    return `<div class="balance-row"><span>${GROUP_ICONS[g]||'📌'} ${esc(g)}</span><b>${n} série(s)</b><div class="balance-bar"><i style="width:${pct}%"></i></div><small>${pct}%</small></div>`;
+  }).join('');
+  const sorted = Object.entries(data).sort((a,b)=>b[1]-a[1]);
+  const msg = sorted.length > 1 && sorted[0][1] >= sorted.at(-1)[1]*2 ? `Attention : beaucoup plus de ${sorted[0][0]} que de ${sorted.at(-1)[0]}.` : `Répartition correcte sur les groupes travaillés.`;
+  return `<section class="card"><div class="section-title no-margin"><h2>Équilibre musculaire · 30 jours</h2></div><div class="balance-list">${rows}</div><p class="coach-note">${esc(msg)}</p></section>`;
+}
+
+function renderHeatmap(){
+  const set = new Set(Object.entries(state.history||{}).filter(([,d]) => (d.entries||[]).length || (d.cardio||[]).length).map(([date]) => date));
+  if((state.session.entries||[]).length || (state.session.cardio||[]).length) set.add(todayKey());
+  const today = new Date(todayKey()+'T00:00:00');
+  const cells = [];
+  let activeDays = 0;
+  for(let i=55;i>=0;i--){
+    const d = new Date(today); d.setDate(today.getDate()-i);
+    const key = d.toISOString().slice(0,10);
+    const on = set.has(key);
+    if(on) activeDays += 1;
+    cells.push(`<span class="heat-cell ${on?'on':''}" title="${key}"></span>`);
+  }
+  const rate = Math.round(activeDays / 56 * 100);
+  return `<section class="card"><div class="section-title no-margin"><h2>Régularité</h2><span class="badge ac">${rate}%</span></div><div class="heatmap">${cells.join('')}</div><p class="muted small-text">Chaque carré représente un jour d’entraînement sur les 8 dernières semaines.</p></section>`;
+}
+
+function prTimeline(){
+  const best = {};
+  const events = [];
+  Object.entries(state.history||{}).sort(([a],[b])=>a.localeCompare(b)).forEach(([date, day]) => {
+    (day.entries||[]).forEach(e => {
+      const w = Number(e.poids)||0;
+      if(w > (best[e.nom]||0)){
+        best[e.nom] = w;
+        events.push({date, nom:e.nom, poids:w, reps:e.reps, icon:e.icon});
+      }
+    });
+  });
+  return events.slice(-8).reverse();
+}
+
+function renderPRTimeline(){
+  const events = prTimeline();
+  if(!events.length) return `<section class="card"><div class="section-title no-margin"><h2>PR timeline</h2></div><div class="empty small-empty">Aucun record détecté pour l’instant.</div></section>`;
+  return `<section class="card"><div class="section-title no-margin"><h2>PR timeline</h2></div><div class="pr-list">${events.map(e=>`<div class="pr-item"><span>${e.icon||'🏆'}</span><div><b>${esc(e.nom)}</b><small>${esc(e.date)} · ${e.poids} kg × ${e.reps}</small></div></div>`).join('')}</div></section>`;
+}
 function getFollowDraft(name){ return state.ui?.followDrafts?.[name] || null; }
 function rememberFollowDraft(name=selectedMachineName){ if(!state.ui?.followMode || !name) return; state.ui.followDrafts ||= {}; state.ui.followDrafts[name] = {...formDraft}; }
 function getTimerFor(name){ return Number(state.timers?.[name] || state.settings.timerDefault || 60); }
@@ -141,11 +240,13 @@ function muscuView(){
  const series = formDraft.series ?? activeFollowDraft?.series ?? 1;
  const reps = formDraft.reps ?? activeFollowDraft?.reps ?? last?.reps ?? 10;
  const rm = formDraft.rm ?? activeFollowDraft?.rm ?? '';
+ const rpe = formDraft.rpe ?? activeFollowDraft?.rpe ?? '';
   return `<div class="desktop-2"><section class="card"><div class="field"><label>Groupe musculaire</label><div class="chips"><button class="chip ${groupFilter===''?'is-active':''}" data-group="">Tout</button>${groups().map(g=>`<button class="chip ${groupFilter===g?'is-active':''}" data-group="${esc(g)}">${GROUP_ICONS[g]||'📌'} ${esc(g)}</button>`).join('')}</div></div>
   <div class="field"><label>Exercice</label><div class="select-row"><select id="machine-select">${filteredMachines().map(x=>`<option value="${esc(x.nom)}" ${x.nom===m?.nom?'selected':''}>${x.icon||'🏋️'} ${esc(x.nom)}</option>`).join('')}</select><button class="btn small" data-action="video-open" title="Vidéo">📹</button><button class="btn small" data-action="machine-edit">✎</button><button class="btn small" data-action="machine-new">+</button></div></div>
   <div id="machine-hint" class="exercise-insights"></div>
   <div class="grid-2"><div class="field"><label>Poids</label>${stepper('poids', poids, Number(m?.step||0.5))}</div><div class="field"><label>Série actuelle</label>${stepper('series', series, 1)}</div></div>
   <div class="grid-2"><div class="field"><label>Reps</label>${stepper('reps', reps, 1)}</div><div class="field"><label>1RM réel optionnel</label><input id="real-rm" type="number" min="0" value="${esc(rm||'')}" placeholder="ex: 120"></div></div>
+  <div class="field"><label>Ressenti / RPE</label><div class="rpe-chips">${[6,7,8,9,10].map(n=>`<button type="button" class="rpe-chip ${Number(rpe)===n?'is-active':''}" data-rpe="${n}">${n}</button>`).join('')}<button type="button" class="rpe-chip ${!rpe?'is-active':''}" data-rpe="">—</button></div></div>
   <button class="btn primary full" data-action="entry-add">+ Ajouter la série / exercice</button></section>
   <section><div class="section-title"><h2>${state.ui.followMode ? `Suivi : ${esc(state.ui.followMode.name)}` : 'Séance en cours'}</h2><button class="btn small danger" data-action="session-clear">Effacer</button></div>${followPanel()}${currentSessionList()}<button class="btn primary full save-session" data-action="session-save">💾 Sauvegarder la séance</button></section></div>`;
 }
@@ -171,7 +272,7 @@ function currentSessionList(){
 function entryCard(e){
   const rm=Number(e.rm1reel)||oneRM(e.poids,e.reps);
   const open = !!state.ui.entryOpen?.[e.id];
-  return `<div class="entry-swipe" data-entry-id="${e.id}"><div class="swipe-delete-bg">Supprimer</div><div class="item entry-item"><button class="entry-head" data-action="entry-toggle" data-id="${e.id}"><div><div class="item-title">${e.icon||''} ${esc(e.nom)}</div><div class="meta">${esc(e.groupe||'')} · série ${e.series} · ${e.reps} reps · ${e.poids} kg</div></div><span class="badge blue">1RM ${rm}</span><span class="chev">${open?'⌄':'›'}</span></button><div class="entry-body ${open?'':'hidden'}"><div class="entry-actions"><button class="btn small" data-action="entry-edit" data-id="${e.id}">Modifier</button><button class="btn small ok" data-action="rest-edit" data-name="${esc(e.nom)}">Repos</button><button class="btn small danger" data-action="entry-delete" data-id="${e.id}">Suppr.</button></div></div></div></div>`;
+  return `<div class="entry-swipe" data-entry-id="${e.id}"><div class="swipe-delete-bg">Supprimer</div><div class="item entry-item"><button class="entry-head" data-action="entry-toggle" data-id="${e.id}"><div><div class="item-title">${e.icon||''} ${esc(e.nom)}</div><div class="meta">${esc(e.groupe||'')} · série ${e.series} · ${e.reps} reps · ${e.poids} kg${e.rpe ? ` · RPE ${e.rpe}` : ''}</div></div><span class="badge blue">1RM ${rm}</span><span class="chev">${open?'⌄':'›'}</span></button><div class="entry-body ${open?'':'hidden'}"><div class="entry-actions"><button class="btn small" data-action="entry-edit" data-id="${e.id}">Modifier</button><button class="btn small ok" data-action="rest-edit" data-name="${esc(e.nom)}">Repos</button><button class="btn small danger" data-action="entry-delete" data-id="${e.id}">Suppr.</button></div></div></div></div>`;
 }
 
 function cardioForm(){ return `<section class="card"><div class="field"><label>Type cardio</label><div class="chips">${['marche','course','velo','escalier'].map(t=>`<button class="chip ${cardioType===t?'is-active':''}" data-cardio-type="${t}">${cardioIcon(t)} ${t}</button>`).join('')}</div></div><div class="grid-3"><div class="field"><label>Durée</label>${stepper('c-duration',20,5)}</div><div class="field"><label>${cardioType==='velo'?'Résistance':cardioType==='escalier'?'Étages':'Vitesse'}</label>${stepper('c-main', cardioType==='velo'?5:cardioType==='escalier'?20:6, cardioType==='velo'||cardioType==='escalier'?1:0.5)}</div><div class="field"><label>${cardioType==='velo'?'RPM':cardioType==='escalier'?'Intensité':'Pente %'}</label>${stepper('c-extra', cardioType==='velo'?80:0, cardioType==='velo'?5:1)}</div></div><button class="btn primary full" data-action="cardio-add">✓ Ajouter cardio</button></section><section><div class="section-title"><h2>Séance en cours</h2></div>${currentSessionList()}</section>`; }
@@ -190,6 +291,9 @@ function statsView(){
   <div class="tabs stats-tabs"><button class="tab ${statsMode==='trend'?'is-active':''}" data-action="stats-mode" data-mode="trend">Tendance</button><button class="tab ${statsMode==='rm'?'is-active':''}" data-action="stats-mode" data-mode="rm">1RM</button><button class="tab ${statsMode==='body'?'is-active':''}" data-action="stats-mode" data-mode="body">Poids</button></div>
   ${statsMode==='body' ? `<section class="card"><div class="field"><label>Ajouter ton poids corporel</label><div class="row"><input id="body-weight" type="number" step="0.1" min="0" value="${esc(bodyLast)}" placeholder="ex: 82.4"><button class="btn primary" data-action="bodyweight-add">Ajouter</button></div></div></section>` : `<section class="card"><div class="grid-2"><div class="field"><label>Exercice</label><select id="stats-exercise">${names.map(n=>`<option value="${esc(n)}" ${n===selectedMachineName?'selected':''}>${esc(n)}</option>`).join('')}</select></div><div class="field"><label>Mesure</label><select id="stats-metric"><option value="weight" ${statsMetric==='weight'?'selected':''}>Poids max</option><option value="reps" ${statsMetric==='reps'?'selected':''}>Reps max</option><option value="rm" ${statsMetric==='rm'?'selected':''}>1RM estimé/réel</option></select></div></div><div class="chips"><button class="chip ${statsRange==='week'?'is-active':''}" data-action="stats-range" data-range="week">Semaine</button><button class="chip ${statsRange==='month'?'is-active':''}" data-action="stats-range" data-range="month">Mois</button><button class="chip ${statsRange==='year'?'is-active':''}" data-action="stats-range" data-range="year">Année</button><button class="chip ${statsRange==='all'?'is-active':''}" data-action="stats-range" data-range="all">Tout</button></div></section>`}
   <section class="card"><div class="section-title no-margin"><h2>${statsTitle()}</h2></div><div class="chart-box"><canvas id="main-chart"></canvas></div>${statsSummary()}</section>
+  ${renderHeatmap()}
+  ${renderMuscleBalance()}
+  ${renderPRTimeline()}
   </div>`;
 }
 function statsTitle(){ if(statsMode==='body') return 'Évolution du poids corporel'; if(statsMode==='rm') return 'Meilleur 1RM par exercice'; return `Progression ${statsMetric==='reps'?'reps':statsMetric==='rm'?'1RM':'poids'} · ${selectedMachineName||''}`; }
@@ -227,6 +331,8 @@ function updateMachineHint(){
   const last = lastEntryFor(m.nom);
   const maxReps = maxRepsForWeight(m.nom, currentWeight);
   const goal = getExerciseGoal(m.nom);
+  const warmup = warmupSuggestionFor(m.nom);
+  const advice = progressionAdviceFor(m.nom);
 
   if(!rows.length){
     el.innerHTML = `<div class="insight-empty">Aucun historique pour cet exercice.</div>`;
@@ -246,11 +352,13 @@ function updateMachineHint(){
         <em>${goal.reason}</em>
       </div>
     ` : ''}
+    ${warmup ? `<div class="insight-extra"><span>🔥 Échauffement</span><b>${warmup}</b></div>` : ''}
+    ${advice ? `<div class="insight-extra"><span>🧠 Progression</span><b>${esc(advice)}</b></div>` : ''}
   `;
 }
 function captureForm(){
   if($('#poids')){
-    formDraft={poids:Number($('#poids').value)||0, series:Number($('#series').value)||1, reps:Number($('#reps').value)||10, rm:$('#real-rm')?.value||''};
+    formDraft={poids:Number($('#poids').value)||0, series:Number($('#series').value)||1, reps:Number($('#reps').value)||10, rm:$('#real-rm')?.value||'', rpe:formDraft.rpe||''};
     rememberFollowDraft();
     updateMachineHint();
   }
@@ -260,7 +368,7 @@ function addEntry(){
   const m=currentMachine(); if(!m) return toast('Choisis un exercice','warn'); captureForm();
   const previousMaxWeight = maxWeightFor(m.nom);
   const previousMaxRepsAtWeight = maxRepsForWeight(m.nom, formDraft.poids);
-  const entry={id:uid(),nom:m.nom,groupe:m.groupe,icon:m.icon,poids:formDraft.poids,series:formDraft.series||1,reps:formDraft.reps||1,rm1reel:formDraft.rm?Number(formDraft.rm):null,createdAt:new Date().toISOString()};
+  const entry={id:uid(),nom:m.nom,groupe:m.groupe,icon:m.icon,poids:formDraft.poids,series:formDraft.series||1,reps:formDraft.reps||1,rm1reel:formDraft.rm?Number(formDraft.rm):null,rpe:formDraft.rpe||null,createdAt:new Date().toISOString()};
   entry.rm1est=oneRM(entry.poids,entry.reps); state.session.entries.unshift(entry); updateRecords(entry);
   const weightRecord = previousMaxWeight !== null && Number(entry.poids) > Number(previousMaxWeight);
   const repsRecord = previousMaxRepsAtWeight !== null && Number(entry.reps) > Number(previousMaxRepsAtWeight);
@@ -302,11 +410,11 @@ function saveMachine(original=''){
 function editEntry(id){
   const e=state.session.entries.find(x=>x.id===id); if(!e) return;
   const m=machineByName(e.nom);
-  $('#modal-root').innerHTML=`<div class="modal-backdrop"><div class="modal"><h2>Modifier la série</h2><div class="item no-margin"><div class="item-title">${e.icon||''} ${esc(e.nom)}</div><div class="meta">${esc(e.groupe||'')}</div></div><div class="grid-2"><div class="field"><label>Poids</label>${stepper('edit-poids', e.poids, Number(m?.step||0.5))}</div><div class="field"><label>Série</label>${stepper('edit-series', e.series, 1)}</div></div><div class="grid-2"><div class="field"><label>Reps</label>${stepper('edit-reps', e.reps, 1)}</div><div class="field"><label>1RM réel</label><input id="edit-rm" type="number" value="${esc(e.rm1reel||'')}" placeholder="optionnel"></div></div><div class="modal-actions"><button class="btn secondary" data-action="modal-close">Annuler</button><button class="btn primary" data-action="entry-save-edit" data-id="${id}">Enregistrer</button></div></div></div>`;
+  $('#modal-root').innerHTML=`<div class="modal-backdrop"><div class="modal"><h2>Modifier la série</h2><div class="item no-margin"><div class="item-title">${e.icon||''} ${esc(e.nom)}</div><div class="meta">${esc(e.groupe||'')}</div></div><div class="grid-2"><div class="field"><label>Poids</label>${stepper('edit-poids', e.poids, Number(m?.step||0.5))}</div><div class="field"><label>Série</label>${stepper('edit-series', e.series, 1)}</div></div><div class="grid-2"><div class="field"><label>Reps</label>${stepper('edit-reps', e.reps, 1)}</div><div class="field"><label>1RM réel</label><input id="edit-rm" type="number" value="${esc(e.rm1reel||'')}" placeholder="optionnel"></div></div><div class="field"><label>RPE</label><select id="edit-rpe"><option value="">—</option>${[6,7,8,9,10].map(n=>`<option value="${n}" ${Number(e.rpe)===n?'selected':''}>${n}</option>`).join('')}</select></div><div class="modal-actions"><button class="btn secondary" data-action="modal-close">Annuler</button><button class="btn primary" data-action="entry-save-edit" data-id="${id}">Enregistrer</button></div></div></div>`;
 }
 function saveEntryEdit(id){
   const e=state.session.entries.find(x=>x.id===id); if(!e) return;
-  e.poids=Number($('#edit-poids')?.value)||e.poids; e.series=Number($('#edit-series')?.value)||e.series; e.reps=Number($('#edit-reps')?.value)||e.reps; e.rm1reel=$('#edit-rm')?.value?Number($('#edit-rm').value):null; e.rm1est=oneRM(e.poids,e.reps);
+  e.poids=Number($('#edit-poids')?.value)||e.poids; e.series=Number($('#edit-series')?.value)||e.series; e.reps=Number($('#edit-reps')?.value)||e.reps; e.rm1reel=$('#edit-rm')?.value?Number($('#edit-rm').value):null; e.rpe=$('#edit-rpe')?.value || null; e.rm1est=oneRM(e.poids,e.reps);
   updateRecords(e); persist(); $('#modal-root').innerHTML=''; toast('Série modifiée','ok'); render();
 }
 function initSwipeDelete(){
@@ -325,6 +433,7 @@ function bindEvents(){ document.addEventListener('click', async e=>{
   const group=e.target.closest('[data-group]'); if(group){ captureForm(); groupFilter=group.dataset.group; const m=filteredMachines()[0]; selectedMachineName=m?.nom || null; formDraft.series=1; formDraft.poids=null; return render(); }
   const ctype=e.target.closest('[data-cardio-type]'); if(ctype){ cardioType=ctype.dataset.cardioType; return render(); }
   const step=e.target.closest('[data-step-target]'); if(step){ const input=$('#'+step.dataset.stepTarget); input.value=String(Math.max(Number(input.min||0), (Number(input.value)||0)+Number(step.dataset.step))); captureForm(); return; }
+  const rpeBtn=e.target.closest('[data-rpe]'); if(rpeBtn){ formDraft.rpe=rpeBtn.dataset.rpe; render(); return; }
   const el=e.target.closest('[data-action]'); const action=el?.dataset.action; if(!action) return;
   if(action==='session-tab'){ sessionTab=el.dataset.tab; render(); }
   if(action==='entry-add') addEntry();
