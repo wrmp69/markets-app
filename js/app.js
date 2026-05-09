@@ -80,7 +80,7 @@ function muscuView(){
   const rm = followDraft?.rm ?? formDraft.rm ?? '';
   return `<div class="desktop-2"><section class="card"><div class="field"><label>Groupe musculaire</label><div class="chips"><button class="chip ${groupFilter===''?'is-active':''}" data-group="">Tout</button>${groups().map(g=>`<button class="chip ${groupFilter===g?'is-active':''}" data-group="${esc(g)}">${GROUP_ICONS[g]||'📌'} ${esc(g)}</button>`).join('')}</div></div>
   <div class="field"><label>Exercice</label><div class="select-row"><select id="machine-select">${filteredMachines().map(x=>`<option value="${esc(x.nom)}" ${x.nom===m?.nom?'selected':''}>${x.icon||'🏋️'} ${esc(x.nom)}</option>`).join('')}</select><button class="btn small" data-action="video-open" title="Vidéo">📹</button><button class="btn small" data-action="machine-edit">✎</button><button class="btn small" data-action="machine-new">+</button></div></div>
-  <div id="machine-hint" class="meta"></div>
+  <div id="machine-hint" class="exercise-insights"></div>
   <div class="grid-2"><div class="field"><label>Poids</label>${stepper('poids', poids, Number(m?.step||0.5))}</div><div class="field"><label>Série actuelle</label>${stepper('series', series, 1)}</div></div>
   <div class="grid-2"><div class="field"><label>Reps</label>${stepper('reps', reps, 1)}</div><div class="field"><label>1RM réel optionnel</label><input id="real-rm" type="number" min="0" value="${esc(rm||'')}" placeholder="ex: 120"></div></div>
   <button class="btn primary full" data-action="entry-add">+ Ajouter la série / exercice</button></section>
@@ -158,12 +158,23 @@ function updateMachineHint(){
   if(!el) return;
   if(!m){ el.innerHTML=''; return; }
   const currentWeight = Number($('#poids')?.value ?? formDraft.poids ?? 0);
-  const maxW = maxWeightFor(m.nom);
+  const rows = entriesForExercise(m.nom);
+  const maxW = rows.length ? Math.max(...rows.map(e=>Number(e.poids)||0)) : null;
+  const bestRM = rows.length ? Math.max(...rows.map(e=>Number(e.rm1reel)||oneRM(e.poids,e.reps))) : null;
+  const last = lastEntryFor(m.nom);
   const maxReps = maxRepsForWeight(m.nom, currentWeight);
-  const parts=[];
-  parts.push(maxW ? `Plus haut poids utilisé : <b>${maxW} kg</b>` : `Aucun historique pour cet exercice`);
-  if(currentWeight) parts.push(maxReps ? `À <b>${currentWeight} kg</b> : max <b>${maxReps} reps</b>` : `À <b>${currentWeight} kg</b> : aucune rep enregistrée`);
-  el.innerHTML = parts.join(' · ');
+
+  if(!rows.length){
+    el.innerHTML = `<div class="insight-empty">Aucun historique pour cet exercice.</div>`;
+    return;
+  }
+
+  el.innerHTML = `
+    <div class="insight-card"><span>🏆 Record</span><b>${maxW || '—'} kg</b></div>
+    <div class="insight-card"><span>📈 Meilleur 1RM</span><b>${bestRM || '—'} kg</b></div>
+    <div class="insight-card"><span>🕒 Dernière fois</span><b>${last ? `${last.poids} kg × ${last.reps}` : '—'}</b></div>
+    <div class="insight-card"><span>🔥 Max à ${currentWeight || '—'} kg</span><b>${maxReps ? `${maxReps} reps` : '—'}</b></div>
+  `;
 }
 function captureForm(){
   if($('#poids')){
@@ -175,11 +186,19 @@ function captureForm(){
 
 function addEntry(){
   const m=currentMachine(); if(!m) return toast('Choisis un exercice','warn'); captureForm();
+  const previousMaxWeight = maxWeightFor(m.nom);
+  const previousMaxRepsAtWeight = maxRepsForWeight(m.nom, formDraft.poids);
   const entry={id:uid(),nom:m.nom,groupe:m.groupe,icon:m.icon,poids:formDraft.poids,series:formDraft.series||1,reps:formDraft.reps||1,rm1reel:formDraft.rm?Number(formDraft.rm):null,createdAt:new Date().toISOString()};
   entry.rm1est=oneRM(entry.poids,entry.reps); state.session.entries.unshift(entry); updateRecords(entry);
+  const weightRecord = previousMaxWeight !== null && Number(entry.poids) > Number(previousMaxWeight);
+  const repsRecord = previousMaxRepsAtWeight !== null && Number(entry.reps) > Number(previousMaxRepsAtWeight);
   formDraft.series = Math.min((formDraft.series||1)+1, 99); formDraft.rm='';
   rememberFollowDraft(m.nom);
-  persist(); toast('Série ajoutée','ok'); startTimer(getTimerFor(m.nom), m.nom); render();
+  persist();
+  if(weightRecord) toast(`🏆 Nouveau record poids : ${entry.poids} kg`, 'ok');
+  else if(repsRecord) toast(`🔥 Nouveau record reps à ${entry.poids} kg : ${entry.reps}`, 'ok');
+  else toast('Série ajoutée','ok');
+  startTimer(getTimerFor(m.nom), m.nom); render();
 }
 function addCardio(){ const duration=Number($('#c-duration')?.value)||0; const main=Number($('#c-main')?.value)||0; const extra=Number($('#c-extra')?.value)||0; const label = cardioType==='velo' ? `rés. ${main} · ${extra} rpm` : cardioType==='escalier' ? `${main} étages` : `${main} km/h · pente ${extra}%`; state.session.cardio.unshift({id:uid(),type:cardioType,duration,main,extra,label,createdAt:new Date().toISOString()}); persist(); toast('Cardio ajouté','ok'); render(); }
 async function saveSession(){ if(!state.session.entries.length && !state.session.cardio.length) return toast('Séance vide','warn'); const day=todayKey(); const prev=state.history[day] || {entries:[],cardio:[]}; state.history[day]={entries:[...state.session.entries,...(prev.entries||[])], cardio:[...state.session.cardio,...(prev.cardio||[])]}; state.session={entries:[],cardio:[]}; state.ui.followMode=null; formDraft.series=1; persist(); toast('Séance sauvegardée','ok'); setRoute('history'); }
