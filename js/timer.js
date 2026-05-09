@@ -1,5 +1,5 @@
 import { $, esc } from './utils.js';
-let interval=null, total=45, left=45, currentName='Repos';
+let interval=null, total=60, left=60, currentName='Repos';
 let minimized=false;
 const CIRC = 2 * Math.PI * 52;
 const MINI_CIRC = 2 * Math.PI * 18;
@@ -8,7 +8,7 @@ function ensureMini(){
   const div=document.createElement('button');
   div.id='timer-mini';
   div.className='timer-mini';
-  div.innerHTML=`<span class="mini-ring"><svg viewBox="0 0 44 44"><circle class="mini-bg" cx="22" cy="22" r="18"/><circle class="mini-fg" id="timer-mini-ring" cx="22" cy="22" r="18"/></svg><b id="timer-mini-left">45</b></span><span id="timer-mini-name">Repos</span>`;
+  div.innerHTML=`<span class="mini-ring"><svg viewBox="0 0 44 44"><circle class="mini-bg" cx="22" cy="22" r="18"/><circle class="mini-fg" id="timer-mini-ring" cx="22" cy="22" r="18"/></svg><b id="timer-mini-left">60</b></span><span id="timer-mini-name">Repos</span>`;
   document.body.appendChild(div);
   div.addEventListener('click',()=>{ minimized=false; $('#timer')?.classList.add('is-open'); div.classList.remove('is-open'); });
 }
@@ -21,9 +21,9 @@ function render(){
 }
 export function stopTimer(){ if(interval) clearInterval(interval); interval=null; $('#timer')?.classList.remove('is-open'); $('#timer-mini')?.classList.remove('is-open'); }
 export function minimizeTimer(){ minimized=true; $('#timer')?.classList.remove('is-open'); ensureMini(); $('#timer-mini')?.classList.add('is-open'); }
-export function startTimer(seconds=45, name='Repos'){
+export function startTimer(seconds=60, name='Repos'){
   stopTimer(); ensureMini();
-  total=Math.max(1,Number(seconds)||45); left=total; currentName=name; minimized=false;
+  total=Math.max(1,Number(seconds)||60); left=total; currentName=name; minimized=false;
   const title=$('#timer-exo'); if(title) title.textContent = esc(name);
   const miniName=$('#timer-mini-name'); if(miniName) miniName.textContent = name;
   $('#timer')?.classList.add('is-open'); render();

@@ -12,7 +12,7 @@ export const defaultState = () => ({
   records: {},
   timers: {},
   customMachines: [],
-  ui: { entryOpen: {}, followMode: null },
+  ui: { entryOpen: {}, followMode: null, followDrafts: {} },
 });
 
 function safeJSON(key, fallback){ try { const raw = localStorage.getItem(key); return raw ? JSON.parse(raw) : fallback; } catch { return fallback; } }
@@ -31,7 +31,7 @@ function migrateOld(){
   s.timers = safeJSON('gl_exo_timers', {});
   s.records = safeJSON('gl_max_weights', {});
   s.customMachines = [];
-  s.ui = { entryOpen: {}, followMode: null };
+  s.ui = { entryOpen: {}, followMode: null, followDrafts: {} };
   return s;
 }
 
@@ -44,5 +44,5 @@ export function loadState(){
 }
 export function saveState(state){ state.updatedAt = new Date().toISOString(); localStorage.setItem(KEY, JSON.stringify(state)); }
 export function exportState(state){ return JSON.stringify({...state, exportedAt:new Date().toISOString()}, null, 2); }
-export function importState(raw){ const data = JSON.parse(raw); if(!data || typeof data !== 'object') throw new Error('Fichier invalide'); const next = defaultState(); Object.assign(next, data, {version:3}); next.session = { entries: Array.isArray(data.session?.entries)?data.session.entries:[], cardio: Array.isArray(data.session?.cardio)?data.session.cardio:[] }; next.history = {}; Object.entries(data.history || {}).forEach(([k,v]) => next.history[k] = normalizeDay(v)); next.templates = Array.isArray(data.templates)?data.templates:[]; next.settings = {...next.settings, ...(data.settings||{})}; next.records = data.records || {}; next.timers = data.timers || {}; next.customMachines = Array.isArray(data.customMachines)?data.customMachines:[]; next.ui = { entryOpen: {}, followMode: null }; saveState(next); return next; }
+export function importState(raw){ const data = JSON.parse(raw); if(!data || typeof data !== 'object') throw new Error('Fichier invalide'); const next = defaultState(); Object.assign(next, data, {version:3}); next.session = { entries: Array.isArray(data.session?.entries)?data.session.entries:[], cardio: Array.isArray(data.session?.cardio)?data.session.cardio:[] }; next.history = {}; Object.entries(data.history || {}).forEach(([k,v]) => next.history[k] = normalizeDay(v)); next.templates = Array.isArray(data.templates)?data.templates:[]; next.settings = {...next.settings, ...(data.settings||{})}; next.records = data.records || {}; next.timers = data.timers || {}; next.customMachines = Array.isArray(data.customMachines)?data.customMachines:[]; next.ui = { entryOpen: {}, followMode: null, followDrafts: {} }; saveState(next); return next; }
 export function resetAll(){ localStorage.removeItem(KEY); OLD_KEYS.forEach(k=>localStorage.removeItem(k)); }
