@@ -528,95 +528,49 @@ function bodyZoneStats(){
   });
 }
 function humanAtlasClass(z){ return `anatomy-zone muscle-${z?.worst?.tone||'empty'}`; }
+function bodyPremiumClass(z){ return `premium-hit hit-${z?.worst?.tone||'empty'}`; }
 function bodyHumanSvg(zones){
   const byId=Object.fromEntries(zones.map(z=>[z.id,z]));
-  const attrs=id=>`class="${humanAtlasClass(byId[id])}" data-action="body-focus" data-groups="${esc((byId[id]?.groups||[]).join('|'))}" role="button" tabindex="0" aria-label="${esc(byId[id]?.label||'')}"`;
-  const status=id=>esc(byId[id]?.worst?.status||'—');
-  const label=id=>esc(byId[id]?.label||'');
-  const zoneLabel=(id,x,y)=>`<text class="anatomy-label" x="${x}" y="${y}" text-anchor="middle">${label(id)}</text><text class="anatomy-status" x="${x}" y="${y+14}" text-anchor="middle">${status(id)}</text>`;
-  return `<svg class="body-human-svg body-anatomy-svg" viewBox="0 0 390 520" aria-label="Carte anatomique musculaire">
-    <defs>
-      <filter id="anatomyGlow" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="4" result="blur"/><feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
-      <linearGradient id="anatomyBase" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#8ba7bc" stop-opacity=".78"/><stop offset="1" stop-color="#48667d" stop-opacity=".72"/></linearGradient>
-      <linearGradient id="anatomyPanel" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="rgba(255,255,255,.07)"/><stop offset="1" stop-color="rgba(255,255,255,.02)"/></linearGradient>
-    </defs>
-    <rect class="anatomy-bg" x="0" y="0" width="390" height="520" rx="30"/>
-    <text class="human-caption anatomy-headline" x="195" y="30" text-anchor="middle">Atlas musculaire</text>
-    <text class="anatomy-small" x="195" y="49" text-anchor="middle">Front / dos · clique une zone</text>
-
-    <g class="anatomy-person front" transform="translate(38 68)">
-      <text class="anatomy-side" x="64" y="-12" text-anchor="middle">Face</text>
-      <g class="anatomy-base">
-        <circle class="body-part" cx="64" cy="22" r="17"/>
-        <path class="body-part" d="M51 38 Q64 47 77 38 L82 58 Q72 66 64 66 Q56 66 46 58 Z"/>
-        <path class="body-part torso" d="M31 61 Q64 42 97 61 Q105 101 93 139 Q86 166 76 194 Q68 205 60 205 Q52 205 42 194 Q32 166 25 139 Q13 101 31 61 Z"/>
-        <path class="body-part" d="M30 65 Q13 81 8 117 Q3 151 13 161 Q23 166 28 151 Q31 124 38 93 Z"/>
-        <path class="body-part" d="M98 65 Q115 81 120 117 Q125 151 115 161 Q105 166 100 151 Q97 124 90 93 Z"/>
-        <path class="body-part" d="M40 193 Q55 204 59 232 L56 320 Q49 342 36 334 Q31 279 28 232 Q28 207 40 193 Z"/>
-        <path class="body-part" d="M88 193 Q73 204 69 232 L72 320 Q79 342 92 334 Q97 279 100 232 Q100 207 88 193 Z"/>
+  const hit=(id,label='')=>{
+    const z=byId[id];
+    const groups=(z?.groups||[]).join('|');
+    const action=groups?`data-action="body-focus" data-groups="${esc(groups)}" role="button" tabindex="0"`:'aria-disabled="true"';
+    return `class="${bodyPremiumClass(z)}" ${action} aria-label="${esc(z?.label||label)}"`;
+  };
+  return `<div class="body-premium-map" aria-label="Carte musculaire interactive">
+    <img class="body-premium-img" src="assets/body-map-premium.svg" alt="Illustration anatomique musculaire face et dos" loading="lazy">
+    <svg class="body-premium-overlay" viewBox="0 0 900 620" aria-hidden="false">
+      <g ${hit('chest','Pectoraux')}>
+        <path d="M180 152 C214 123 246 124 275 154 C268 198 238 218 197 207 C174 196 166 176 180 152Z"/>
+        <path d="M285 154 C314 124 346 123 380 152 C394 176 386 196 363 207 C322 218 292 198 285 154Z"/>
       </g>
-      <g class="anatomy-lines">
-        <path d="M38 68 Q64 80 90 68"/><path d="M35 100 H93"/><path d="M42 129 H86"/><path d="M47 158 H81"/>
-        <path d="M64 78 V190"/><path d="M54 99 H74 M52 119 H76 M50 139 H78 M49 159 H79"/>
-        <path d="M43 219 Q55 232 56 258 M85 219 Q73 232 72 258"/>
+      <g ${hit('shoulders','Épaules')}>
+        <path d="M132 140 C148 110 177 99 203 117 C188 137 177 165 166 195 C142 192 126 177 121 158Z"/>
+        <path d="M357 117 C383 99 412 110 428 140 C434 158 418 192 394 195 C383 165 372 137 357 117Z"/>
+        <path d="M545 141 C562 110 590 100 616 118 C599 139 589 166 579 196 C554 193 538 178 533 158Z"/>
+        <path d="M753 118 C779 100 807 110 824 141 C830 158 814 193 789 196 C779 166 770 139 753 118Z"/>
       </g>
-      <g ${attrs('chest')}>
-        <path class="muscle" d="M34 72 Q47 58 62 76 L61 105 Q42 104 30 88 Z"/>
-        <path class="muscle" d="M66 76 Q81 58 94 72 L98 88 Q86 104 67 105 Z"/>
+      <g ${hit('arms','Bras')}>
+        <path d="M125 195 C104 243 99 303 116 330 C135 341 149 316 151 278 C154 238 164 209 181 190 C164 199 143 201 125 195Z"/>
+        <path d="M435 195 C456 243 461 303 444 330 C425 341 411 316 409 278 C406 238 396 209 379 190 C396 199 417 201 435 195Z"/>
+        <path d="M537 196 C517 242 511 302 528 330 C548 341 561 317 564 279 C566 239 576 209 593 190 C577 200 556 201 537 196Z"/>
+        <path d="M832 196 C852 242 858 302 841 330 C821 341 808 317 805 279 C803 239 793 209 776 190 C792 200 813 201 832 196Z"/>
       </g>
-      <g ${attrs('shoulders')}>
-        <path class="muscle" d="M25 63 Q37 50 48 60 Q39 74 34 91 Q22 86 18 76 Z"/>
-        <path class="muscle" d="M80 60 Q91 50 103 63 L110 76 Q106 86 94 91 Q89 74 80 60 Z"/>
+      <g ${hit('core','Core')}>
+        <path d="M224 214 C248 223 312 223 336 214 C344 275 331 337 304 371 C287 388 273 388 256 371 C229 337 216 275 224 214Z"/>
       </g>
-      <g ${attrs('arms')}>
-        <path class="muscle" d="M22 91 Q12 113 11 145 Q13 158 22 156 Q29 143 28 121 Q27 101 35 86 Z"/>
-        <path class="muscle" d="M106 91 Q116 113 117 145 Q115 158 106 156 Q99 143 100 121 Q101 101 93 86 Z"/>
+      <g ${hit('legs','Jambes')}>
+        <path d="M213 390 C247 388 267 408 272 471 L262 568 C249 606 223 602 214 560 C207 504 199 426 213 390Z"/>
+        <path d="M347 390 C313 388 293 408 288 471 L298 568 C311 606 337 602 346 560 C353 504 361 426 347 390Z"/>
+        <path d="M622 390 C653 389 675 408 680 471 L670 568 C657 606 631 602 622 560 C615 504 608 426 622 390Z"/>
+        <path d="M746 390 C715 389 693 408 688 471 L698 568 C711 606 737 602 746 560 C753 504 760 426 746 390Z"/>
       </g>
-      <g ${attrs('core')}>
-        <path class="muscle" d="M48 105 Q64 111 80 105 Q82 152 73 183 Q64 193 55 183 Q46 152 48 105 Z"/>
-        <path class="muscle-cut" d="M54 121 H74 M52 139 H76 M52 157 H76 M64 108 V185"/>
+      <g ${hit('back','Dos')}>
+        <path d="M588 151 C624 121 684 121 720 151 C713 253 689 334 654 384 C619 334 595 253 588 151Z"/>
       </g>
-      <g ${attrs('legs')}>
-        <path class="muscle" d="M38 199 Q55 202 59 231 L55 303 Q47 326 38 320 Q33 274 31 231 Q30 210 38 199 Z"/>
-        <path class="muscle" d="M90 199 Q73 202 69 231 L73 303 Q81 326 90 320 Q95 274 97 231 Q98 210 90 199 Z"/>
-        <path class="muscle-cut" d="M47 221 Q56 246 54 283 M81 221 Q72 246 74 283"/>
-      </g>
-    </g>
-
-    <g class="anatomy-person back" transform="translate(224 68)">
-      <text class="anatomy-side" x="64" y="-12" text-anchor="middle">Dos</text>
-      <g class="anatomy-base">
-        <circle class="body-part" cx="64" cy="22" r="17"/>
-        <path class="body-part" d="M51 38 Q64 47 77 38 L82 58 Q72 66 64 66 Q56 66 46 58 Z"/>
-        <path class="body-part torso" d="M31 61 Q64 42 97 61 Q105 101 93 139 Q86 166 76 194 Q68 205 60 205 Q52 205 42 194 Q32 166 25 139 Q13 101 31 61 Z"/>
-        <path class="body-part" d="M30 65 Q13 81 8 117 Q3 151 13 161 Q23 166 28 151 Q31 124 38 93 Z"/>
-        <path class="body-part" d="M98 65 Q115 81 120 117 Q125 151 115 161 Q105 166 100 151 Q97 124 90 93 Z"/>
-        <path class="body-part" d="M40 193 Q55 204 59 232 L56 320 Q49 342 36 334 Q31 279 28 232 Q28 207 40 193 Z"/>
-        <path class="body-part" d="M88 193 Q73 204 69 232 L72 320 Q79 342 92 334 Q97 279 100 232 Q100 207 88 193 Z"/>
-      </g>
-      <g class="anatomy-lines">
-        <path d="M64 50 V198"/><path d="M30 70 Q64 93 98 70"/><path d="M28 123 Q64 97 100 123"/>
-        <path d="M43 219 Q55 232 56 258 M85 219 Q73 232 72 258"/>
-      </g>
-      <g ${attrs('back')}>
-        <path class="muscle" d="M32 67 Q64 49 96 67 Q91 112 78 151 Q69 171 64 187 Q59 171 50 151 Q37 112 32 67 Z"/>
-        <path class="muscle-cut" d="M40 78 Q64 96 88 78 M43 129 Q64 107 85 129 M64 58 V184"/>
-      </g>
-      <g ${attrs('shoulders')}>
-        <path class="muscle" d="M24 64 Q38 49 50 62 Q41 76 35 94 Q22 89 17 77 Z"/>
-        <path class="muscle" d="M78 62 Q90 49 104 64 L111 77 Q106 89 93 94 Q87 76 78 62 Z"/>
-      </g>
-      <g ${attrs('arms')}>
-        <path class="muscle" d="M21 91 Q12 115 11 145 Q13 158 22 156 Q29 143 28 121 Q27 101 35 86 Z"/>
-        <path class="muscle" d="M107 91 Q116 115 117 145 Q115 158 106 156 Q99 143 100 121 Q101 101 93 86 Z"/>
-      </g>
-      <g ${attrs('legs')}>
-        <path class="muscle" d="M38 199 Q55 202 59 231 L55 303 Q47 326 38 320 Q33 274 31 231 Q30 210 38 199 Z"/>
-        <path class="muscle" d="M90 199 Q73 202 69 231 L73 303 Q81 326 90 320 Q95 274 97 231 Q98 210 90 199 Z"/>
-      </g>
-    </g>
-    ${zoneLabel('chest',72,446)}${zoneLabel('back',288,446)}
-  </svg>`;
+    </svg>
+    <div class="body-premium-legend"><span class="ready">Prêt</span><span class="loaded">Récupération</span><span class="danger">À relancer</span></div>
+  </div>`;
 }
 function renderBodyMap(){
   const zones=bodyZoneStats();
