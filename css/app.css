@@ -1078,3 +1078,35 @@ html.light .human-atlas-zone.tone-ready .atlas-highlight path{fill:rgba(47,125,9
 html.light .human-atlas-zone.tone-loaded .atlas-highlight path,html.light .human-atlas-zone.tone-late .atlas-highlight path{fill:rgba(184,121,58,.54);stroke:rgba(184,121,58,.88);filter:drop-shadow(0 0 8px rgba(184,121,58,.22))}
 html.light .human-atlas-zone.tone-hot .atlas-highlight path,html.light .human-atlas-zone.tone-danger .atlas-highlight path{fill:rgba(180,83,61,.54);stroke:rgba(180,83,61,.88);filter:drop-shadow(0 0 8px rgba(180,83,61,.22))}
 @media(max-width:420px){.body-atlas-svg{max-width:100%}.atlas-title{font-size:9.5px}.atlas-sub{font-size:7.8px}}
+
+/* ===== Body map 4.3 — silhouette anatomique premium ===== */
+.body-atlas-svg{display:none!important}
+.body-anatomy-svg{width:min(100%,410px);max-width:410px;height:auto;display:block;filter:drop-shadow(0 30px 55px rgba(0,0,0,.38))}
+.anatomy-bg{fill:rgba(2,7,12,.42);stroke:rgba(183,255,0,.12);stroke-width:1}
+.anatomy-headline{font-size:13px;fill:var(--text);font-weight:900;letter-spacing:.14em;text-transform:uppercase}
+.anatomy-small,.anatomy-side{fill:var(--muted);font-size:10px;font-weight:900;letter-spacing:.08em;text-transform:uppercase}
+.anatomy-base .body-part{fill:url(#anatomyBase);stroke:rgba(235,245,255,.24);stroke-width:1.05;vector-effect:non-scaling-stroke}
+.anatomy-base .torso{fill:rgba(112,145,168,.55)}
+.anatomy-lines path{fill:none;stroke:rgba(240,250,255,.32);stroke-width:1;stroke-linecap:round;stroke-linejoin:round;vector-effect:non-scaling-stroke;opacity:.9}
+.anatomy-zone{cursor:pointer;outline:none;transition:filter .16s ease,transform .16s ease,opacity .16s ease;transform-origin:center}
+.anatomy-zone .muscle{fill:rgba(255,255,255,.11);stroke:rgba(255,255,255,.26);stroke-width:1.25;stroke-linejoin:round;vector-effect:non-scaling-stroke;transition:fill .16s ease,stroke .16s ease,filter .16s ease}
+.anatomy-zone .muscle-cut{fill:none!important;stroke:rgba(8,12,18,.50);stroke-width:1;stroke-linecap:round;stroke-linejoin:round;vector-effect:non-scaling-stroke;pointer-events:none}
+.anatomy-zone:hover,.anatomy-zone:focus{filter:drop-shadow(0 0 18px rgba(183,255,0,.58));transform:translateY(-1px)}
+.anatomy-zone:hover .muscle,.anatomy-zone:focus .muscle{stroke-width:1.7;filter:url(#anatomyGlow)}
+.anatomy-zone.muscle-ready .muscle{fill:rgba(183,255,0,.68);stroke:rgba(222,255,75,.98);filter:drop-shadow(0 0 12px rgba(183,255,0,.48))}
+.anatomy-zone.muscle-loaded .muscle,.anatomy-zone.muscle-late .muscle{fill:rgba(255,191,63,.66);stroke:rgba(255,220,88,.96);filter:drop-shadow(0 0 12px rgba(255,191,63,.38))}
+.anatomy-zone.muscle-hot .muscle,.anatomy-zone.muscle-danger .muscle{fill:rgba(255,78,88,.68);stroke:rgba(255,118,126,.98);filter:drop-shadow(0 0 13px rgba(255,78,88,.45))}
+.anatomy-zone.muscle-empty{opacity:.58}.anatomy-zone.muscle-empty .muscle{fill:rgba(255,255,255,.08);stroke:rgba(255,255,255,.18);filter:none}
+.anatomy-label{fill:var(--text);font-size:10px;font-weight:900;text-transform:uppercase;letter-spacing:.07em}
+.anatomy-status{fill:var(--muted);font-size:8.5px;font-weight:800;text-transform:uppercase;letter-spacing:.04em}
+.human-figure{background:radial-gradient(circle at 50% 12%,rgba(183,255,0,.16),transparent 24%),radial-gradient(circle at 50% 58%,rgba(0,194,255,.10),transparent 42%),rgba(0,0,0,.28)!important;border-color:rgba(183,255,0,.16)!important}
+html.light .anatomy-bg{fill:#fff7ee;stroke:rgba(11,27,51,.10)}
+html.light .anatomy-base .body-part{fill:rgba(109,137,157,.46);stroke:rgba(11,27,51,.18)}
+html.light .anatomy-base .torso{fill:rgba(109,137,157,.38)}
+html.light .anatomy-lines path{stroke:rgba(11,27,51,.25)}
+html.light .anatomy-zone.muscle-ready .muscle{fill:rgba(47,125,99,.52);stroke:rgba(47,125,99,.88);filter:drop-shadow(0 0 8px rgba(47,125,99,.25))}
+html.light .anatomy-zone.muscle-loaded .muscle,html.light .anatomy-zone.muscle-late .muscle{fill:rgba(184,121,58,.54);stroke:rgba(184,121,58,.88);filter:drop-shadow(0 0 8px rgba(184,121,58,.22))}
+html.light .anatomy-zone.muscle-hot .muscle,html.light .anatomy-zone.muscle-danger .muscle{fill:rgba(180,83,61,.54);stroke:rgba(180,83,61,.88);filter:drop-shadow(0 0 8px rgba(180,83,61,.22))}
+html.light .anatomy-zone.muscle-empty .muscle{fill:rgba(11,27,51,.05);stroke:rgba(11,27,51,.14)}
+html.light .human-figure{background:radial-gradient(circle at 50% 14%,rgba(184,121,58,.15),transparent 24%),radial-gradient(circle at 50% 58%,rgba(18,52,90,.08),transparent 42%),#fff7ee!important;border-color:rgba(184,121,58,.22)!important}
+@media(max-width:420px){.body-anatomy-svg{max-width:100%}.anatomy-headline{font-size:12px}.anatomy-label{font-size:9px}.anatomy-status{font-size:7.8px}}
