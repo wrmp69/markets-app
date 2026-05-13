@@ -10,3 +10,9 @@ Version refondue en modules. Ouvre `index.html` ou déploie le dossier sur GitHu
 - Navigation mobile propre
 - Templates avec séries, reps et poids
 - Stats par semaine, mois, groupe et exercice
+
+
+## Carte du corps cliquable
+La carte anatomique détaillée est intégrée dans l'onglet **Stats**.
+Chaque zone SVG clique vers un focus musculaire, puis propose les exercices disponibles liés au groupe musculaire.
+Le fichier source visuel est dans `assets/body-map-base.png` et les overlays réutilisables sont dans `assets/body-map-fitness-overlay-only.svg`.

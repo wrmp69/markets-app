@@ -1266,3 +1266,44 @@ html.light .body-coach-pick{background:rgba(184,121,58,.12);border-color:rgba(18
 html.light .body-exercise-card.is-recommended{background:rgba(184,121,58,.12);border-color:rgba(184,121,58,.28)}
 @media(min-width:760px){.body-sheet{border-radius:30px}.body-exercise-card{grid-template-columns:1fr auto;align-items:center}.body-exercise-actions{grid-template-columns:auto auto auto}.muscle-hub-layout{grid-template-columns:1.12fr .88fr!important}}
 @media(max-width:430px){.body-reco-card{grid-template-columns:1fr}.body-reco-card .btn{width:100%}.body-exercise-actions{grid-template-columns:1fr}.muscle-panel{padding:10px}.body-sheet{padding:14px 12px}}
+
+
+/* Body map détaillée intégrée depuis la silhouette fournie */
+.body-premium-map{
+  aspect-ratio:1318/1066;
+  max-width:720px;
+  background:linear-gradient(145deg,rgba(225,233,238,.10),rgba(8,16,24,.42));
+}
+.body-premium-overlay path.premium-hit{
+  fill:rgba(255,255,255,.02);
+  stroke:rgba(255,255,255,.08);
+  stroke-width:2.5;
+  vector-effect:non-scaling-stroke;
+  cursor:pointer;
+  outline:none;
+  transition:fill .16s ease,stroke .16s ease,opacity .16s ease,filter .16s ease,transform .16s ease;
+}
+.body-premium-overlay path.premium-hit.hit-ready{fill:rgba(183,255,0,.22);stroke:rgba(183,255,0,.70)}
+.body-premium-overlay path.premium-hit.hit-loaded,
+.body-premium-overlay path.premium-hit.hit-hot{fill:rgba(255,183,64,.21);stroke:rgba(255,183,64,.70)}
+.body-premium-overlay path.premium-hit.hit-late{fill:rgba(255,128,42,.24);stroke:rgba(255,128,42,.78)}
+.body-premium-overlay path.premium-hit.hit-danger{fill:rgba(255,60,85,.28);stroke:rgba(255,60,85,.82)}
+.body-premium-overlay path.premium-hit.hit-empty{fill:rgba(255,255,255,.018);stroke:rgba(255,255,255,.07)}
+.body-premium-overlay path.premium-hit:hover,
+.body-premium-overlay path.premium-hit:focus-visible{
+  fill:rgba(183,255,0,.44)!important;
+  stroke:rgba(183,255,0,1)!important;
+  filter:drop-shadow(0 0 8px rgba(183,255,0,.65));
+}
+.body-premium-overlay path.premium-hit.is-muted{opacity:.14;filter:saturate(.35)}
+.body-premium-overlay path.premium-hit:not(.is-muted):hover{opacity:1}
+.body-list.muscle-panel{max-height:520px;overflow:auto;scrollbar-width:thin}
+html.light .body-premium-overlay path.premium-hit{stroke:rgba(11,27,51,.12)}
+html.light .body-premium-overlay path.premium-hit.hit-ready{fill:rgba(47,125,99,.22);stroke:rgba(47,125,99,.70)}
+html.light .body-premium-overlay path.premium-hit.hit-loaded,
+html.light .body-premium-overlay path.premium-hit.hit-hot{fill:rgba(184,121,58,.22);stroke:rgba(184,121,58,.70)}
+html.light .body-premium-overlay path.premium-hit.hit-late{fill:rgba(209,91,74,.20);stroke:rgba(209,91,74,.70)}
+html.light .body-premium-overlay path.premium-hit.hit-danger{fill:rgba(190,59,70,.24);stroke:rgba(190,59,70,.74)}
+html.light .body-premium-overlay path.premium-hit:hover,
+html.light .body-premium-overlay path.premium-hit:focus-visible{fill:rgba(184,121,58,.36)!important;stroke:rgba(184,121,58,.95)!important}
+@media(max-width:430px){.body-list.muscle-panel{max-height:420px}}
