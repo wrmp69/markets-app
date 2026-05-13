@@ -1141,3 +1141,25 @@ html.light .premium-hit:hover,html.light .premium-hit:focus-visible{filter:drop-
 html.light .body-premium-legend span{background:rgba(255,252,246,.72);color:var(--navy);border-color:rgba(11,27,51,.08)}
 html.light .body-premium-legend .ready{color:#2f7d63}.body-figure.human-figure{display:grid;place-items:center;padding:12px}.body-help{font-size:11px}
 @media(max-width:420px){.body-premium-map{width:100%;border-radius:22px}.body-premium-legend{bottom:9px;gap:5px}.body-premium-legend span{font-size:9px;padding:5px 7px}}
+
+/* ===== Timer sound + final countdown FX ===== */
+.timer.is-ending{background:radial-gradient(circle at center,rgba(183,255,0,.12),rgba(0,0,0,.86) 62%,rgba(0,0,0,.94))}
+.timer.is-ending .timer-card{border-color:rgba(183,255,0,.55);box-shadow:0 45px 130px rgba(0,0,0,.72),0 0 45px rgba(183,255,0,.22),inset 0 0 0 1px rgba(183,255,0,.12);animation:timerEndPulse 1s ease-in-out infinite}
+.timer.is-ending .timer-ring strong{color:#d7ff2f;text-shadow:0 0 18px rgba(183,255,0,.75),0 0 42px rgba(183,255,0,.36)}
+.timer.is-ending .ring-fg,.timer-mini.is-ending .mini-fg{stroke:#d7ff2f;filter:drop-shadow(0 0 8px rgba(183,255,0,.85))}
+.timer.is-critical .timer-card{animation:timerCriticalShake .35s linear infinite,timerEndPulse .8s ease-in-out infinite;border-color:rgba(255,122,24,.72);box-shadow:0 45px 140px rgba(0,0,0,.76),0 0 55px rgba(255,122,24,.25),inset 0 0 0 1px rgba(255,122,24,.18)}
+.timer.is-critical .timer-ring strong{color:#ffb347;text-shadow:0 0 20px rgba(255,122,24,.8),0 0 50px rgba(255,122,24,.42)}
+.timer.is-critical .ring-fg,.timer-mini.is-critical .mini-fg{stroke:#ffb347;filter:drop-shadow(0 0 9px rgba(255,122,24,.85))}
+.timer.is-finished{background:radial-gradient(circle at center,rgba(183,255,0,.22),rgba(0,0,0,.86) 58%,rgba(0,0,0,.96))}
+.timer.is-finished .timer-card{border-color:rgba(183,255,0,.86);box-shadow:0 55px 160px rgba(0,0,0,.8),0 0 90px rgba(183,255,0,.36),inset 0 0 0 1px rgba(183,255,0,.22);animation:timerFinishPop .85s cubic-bezier(.18,1.4,.25,1)}
+.timer.is-finished .timer-ring strong{font-size:50px;letter-spacing:.04em;color:#d7ff2f;text-shadow:0 0 24px rgba(183,255,0,.9),0 0 62px rgba(183,255,0,.48)}
+.timer-mini.is-ending{border-color:rgba(183,255,0,.68);box-shadow:0 20px 60px rgba(0,0,0,.42),0 0 28px rgba(183,255,0,.22);animation:timerMiniPulse .9s ease-in-out infinite}
+.timer-mini.is-critical{border-color:rgba(255,122,24,.72);box-shadow:0 20px 60px rgba(0,0,0,.45),0 0 30px rgba(255,122,24,.24);animation:timerMiniPulse .45s ease-in-out infinite}
+.timer-mini.is-finished{border-color:rgba(183,255,0,.86);box-shadow:0 20px 70px rgba(0,0,0,.5),0 0 38px rgba(183,255,0,.34);animation:timerFinishPop .85s cubic-bezier(.18,1.4,.25,1)}
+.timer-mini.is-finished .mini-ring b{font-size:10px;color:#d7ff2f;text-shadow:0 0 14px rgba(183,255,0,.85)}
+@keyframes timerEndPulse{0%,100%{transform:scale(1)}50%{transform:scale(1.018)}}
+@keyframes timerMiniPulse{0%,100%{transform:translateY(0) scale(1)}50%{transform:translateY(-2px) scale(1.035)}}
+@keyframes timerCriticalShake{0%,100%{transform:translateX(0)}25%{transform:translateX(-2px)}75%{transform:translateX(2px)}}
+@keyframes timerFinishPop{0%{transform:scale(.92);opacity:.65}55%{transform:scale(1.05);opacity:1}100%{transform:scale(1)}}
+html.light .timer.is-ending{background:radial-gradient(circle at center,rgba(183,255,0,.22),rgba(244,239,231,.90) 62%,rgba(244,239,231,.96))}
+html.light .timer.is-finished{background:radial-gradient(circle at center,rgba(183,255,0,.28),rgba(244,239,231,.92) 58%,rgba(244,239,231,.98))}
