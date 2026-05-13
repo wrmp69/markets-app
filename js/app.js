@@ -321,45 +321,6 @@ function liveDashboard(){
   if(!entries.length&&!state.ui.followMode) return `<section class="premium-focus empty"><div class="focus-head"><span class="focus-icon">${icon('strength')}</span><div><b>Prêt</b><span>${goal?`Objectif : ${goal.main}`:'Choisis un exercice et lance ta première série.'}</span></div></div></section>`;
   return `<section class="premium-focus"><button class="focus-arrow icon-only" data-action="exercise-open" data-name="${esc(name||'')}" title="Ouvrir la fiche">${icon('chevron')}</button><div class="focus-head"><span class="focus-icon">${icon('strength')}</span><div><h2>${esc(name||'Exercice')}</h2><p>${goal?esc(goal.main):'Objectif : démarre proprement'}</p></div></div><div class="focus-pills"><span>${icon('clock')}${mins||'—'} min</span><span>${icon('clock')}${rest.seconds}s · ${esc(rest.label)}</span><span>${recordPossible?'Record possible':ai?.signal||'Stable'}</span></div></section>`;
 }
-
-function compactSessionHero(m, poids, reps){
-  const entries=state.session.entries||[];
-  const name=m?.nom||selectedMachineName||'';
-  const goal=name?getExerciseGoal(name):null;
-  const rest=name?smartRestFor(name):{seconds:Number(state.settings.timerDefault||60),label:'Repos',reason:'standard'};
-  const currentRows=name?entries.filter(e=>e.nom===name):[];
-  const st=sessionTimelineStats(entries,state.session.cardio||[]);
-  const started=entries.length||state.ui.followMode;
-  const title=name||'Choisis un exercice';
-  const subtitle=goal?.main || (started?'Continue proprement':'Sélectionne ton exercice puis ajoute ta première série.');
-  return `<section class="compact-hero ${started?'is-live':'is-ready'}">
-    <div class="compact-hero-main"><span class="compact-hero-icon">${icon('strength')}</span><div><div class="eyebrow">Mode salle</div><h2>${esc(title)}</h2><p>${esc(subtitle)}</p></div></div>
-    <div class="compact-hero-pills"><span>${currentRows.length} série(s)</span><span>${poids||'—'} kg × ${reps||'—'}</span><span>${rest.seconds}s repos</span>${st.prCount?`<span>${st.prCount} PR</span>`:''}</div>
-  </section>`;
-}
-function currentExerciseQuickList(name){
-  const rows=(state.session.entries||[]).filter(e=>e.nom===name);
-  if(!rows.length) return `<div class="compact-empty">Aucune série sur cet exercice aujourd’hui.</div>`;
-  return `<div class="compact-sets">${rows.slice(0,5).map((e,i)=>{
-    const rm=Number(e.rm1reel)||oneRM(e.poids,e.reps);
-    return `<div class="compact-set-row ${i===0?'is-last':''}"><span>${i===0?'Dernière':'Série'}</span><b>${esc(e.poids)} kg × ${esc(e.reps)}</b><em>1RM ${rm}</em></div>`;
-  }).join('')}</div>`;
-}
-function compactSessionSnapshot(){
-  const entries=state.session.entries||[], cardio=state.session.cardio||[];
-  if(!entries.length && !cardio.length) return `<section class="compact-card compact-empty-card"><b>Séance vide</b><span>Ajoute ta première série, le reste reste rangé.</span></section>`;
-  const st=sessionTimelineStats(entries,cardio);
-  const unique=new Set(entries.map(e=>e.nom)).size;
-  const last=entries[0];
-  const lastLine=last?`${last.nom} · ${last.poids} kg × ${last.reps}`:(cardio[0]?`${cardio[0].type} · ${cardio[0].duration} min`:'—');
-  return `<section class="compact-card compact-snapshot"><div class="compact-snapshot-grid"><div><strong>${st.sets}</strong><span>séries</span></div><div><strong>${unique}</strong><span>exos</span></div><div><strong>${Math.round(st.totalVolume)}</strong><span>kg</span></div><div><strong>${st.duration}</strong><span>min</span></div></div><p><b>Dernier ajout :</b> ${esc(lastLine)}</p></section>`;
-}
-function compactSessionLastRows(){
-  const rows=[...(state.session.entries||[]).slice(0,4), ...(state.session.cardio||[]).slice(0,1)];
-  if(!rows.length) return '';
-  return `<div class="compact-log-mini">${rows.map(x=>x.nom?`<div><b>${esc(x.nom)}</b><span>${esc(x.poids)} kg × ${esc(x.reps)} · série ${esc(x.series)}</span></div>`:`<div><b>${esc(x.type)}</b><span>${esc(x.duration)} min · ${esc(x.label)}</span></div>`).join('')}</div>`;
-}
-
 function muscuView(){
   const m=defaultMachine(); selectedMachineName=m?.nom||selectedMachineName;
   const last=m?lastEntryFor(m.nom):null, followDraft=m?getFollowDraft(m.nom):null;
@@ -367,25 +328,13 @@ function muscuView(){
   const poids=formDraft.poids??activeFollowDraft?.poids??preferredWeight??last?.poids??m?.poids?.[0]??20;
   const series=formDraft.series??activeFollowDraft?.series??1, reps=formDraft.reps??activeFollowDraft?.reps??last?.reps??10;
   const rm=formDraft.rm??activeFollowDraft?.rm??'';
-  const hasSession=(state.session.entries||[]).length || (state.session.cardio||[]).length;
-  return `<div class="compact-session">
-    ${compactSessionHero(m, poids, reps)}
-    ${state.ui.followMode?`<details class="compact-details compact-follow" open><summary>Template suivi</summary>${followPanel()}</details>`:''}
-    <section class="card compact-main-card">
-      <div class="compact-main-head"><div><div class="eyebrow">Saisie rapide</div><h2>Ajouter une série</h2></div><div class="compact-head-actions"><button class="btn small icon-only" data-action="exercise-open" title="Fiche exercice">${icon('book')}</button><button class="btn small icon-only" data-action="video-open" title="Vidéo">${icon('video')}</button></div></div>
-      <div class="field compact-exercise-field"><label>Exercice</label><div class="select-row premium-select"><select id="machine-select">${filteredMachines().map(x=>`<option value="${esc(x.nom)}" ${x.nom===m?.nom?'selected':''}>${esc(x.nom)}</option>`).join('')}</select><button class="btn small icon-only" data-action="machine-edit" title="Modifier">${icon('edit')}</button><button class="btn small icon-only" data-action="machine-new" title="Ajouter">${icon('plus')}</button></div></div>
-      <details class="compact-details compact-filter"><summary>Filtrer par groupe</summary><div class="chips">${[''].concat(groups()).map(g=>`<button class="chip ${groupFilter===g?'is-active':''}" data-group="${esc(g)}">${g?esc(g):'Tout'}</button>`).join('')}</div></details>
-      <div class="compact-entry-grid"><div class="field"><label>Poids</label>${stepper('poids', poids, Number(m?.step||0.5))}</div><div class="field"><label>Reps</label>${stepper('reps', reps, 1)}</div><div class="field"><label>Série</label>${stepper('series', series, 1)}</div></div>
-      <details class="compact-details compact-rm"><summary>1RM réel optionnel</summary><input id="real-rm" type="number" min="0" value="${esc(rm||'')}" placeholder="ex: 120"></details>
-      <button class="btn primary full compact-add" data-action="entry-add">+ Ajouter la série</button>
-      <div class="compact-current-exercise"><div class="between"><b>Dernières séries de cet exercice</b><button class="btn small secondary" data-action="rest-edit" data-name="${esc(m?.nom||'')}">Repos</button></div>${currentExerciseQuickList(m?.nom)}</div>
-    </section>
-    <details class="compact-details compact-ai"><summary>Conseil IA / analyse exercice</summary><div id="machine-hint" class="exercise-insights premium-insights"></div></details>
-    ${compactSessionSnapshot()}
-    ${compactSessionLastRows()}
-    <section class="compact-save-row"><button class="btn primary full" data-action="session-save" ${hasSession?'':'disabled'}>Sauvegarder la séance</button><button class="btn danger" data-action="session-clear" ${hasSession?'':'disabled'}>Effacer</button></section>
-    <details class="compact-details compact-full-session"><summary>Voir séance complète, coach IA et timeline</summary><div class="compact-full-inner">${currentSessionList()}</div></details>
-  </div>`;
+  return `<div class="premium-session">${liveDashboard()}<section class="card premium-form"><div class="field"><label>Groupe musculaire</label><div class="chips">${[''].concat(groups()).map(g=>`<button class="chip ${groupFilter===g?'is-active':''}" data-group="${esc(g)}">${g?esc(g):'Tout'}</button>`).join('')}</div></div>
+  <div class="field"><label>Exercice</label><div class="select-row premium-select"><select id="machine-select">${filteredMachines().map(x=>`<option value="${esc(x.nom)}" ${x.nom===m?.nom?'selected':''}>${esc(x.nom)}</option>`).join('')}</select><button class="btn small icon-only" data-action="exercise-open" title="Fiche exercice">${icon('book')}</button><button class="btn small icon-only" data-action="video-open" title="Vidéo">${icon('video')}</button><button class="btn small icon-only" data-action="machine-edit" title="Modifier">${icon('edit')}</button><button class="btn small icon-only" data-action="machine-new" title="Ajouter">${icon('plus')}</button></div></div>
+  <div id="machine-hint" class="exercise-insights premium-insights"></div>
+  <div class="quick-title">Saisie rapide</div><div class="grid-2"><div class="field"><label>Poids</label>${stepper('poids', poids, Number(m?.step||0.5))}</div><div class="field"><label>Série actuelle</label>${stepper('series', series, 1)}</div></div>
+  <div class="grid-2"><div class="field"><label>Reps</label>${stepper('reps', reps, 1)}</div><div class="field"><label>1RM réel optionnel</label><input id="real-rm" type="number" min="0" value="${esc(rm||'')}" placeholder="ex: 120"></div></div>
+  <button class="btn primary full premium-add" data-action="entry-add">+ Ajouter la série / exercice</button></section>
+  <section class="premium-current"><div class="section-title"><h2>Séance en cours</h2><button class="btn small danger" data-action="session-clear">Effacer</button></div>${followPanel()}${currentSessionList()}<button class="btn primary full save-session" data-action="session-save">Sauvegarder la séance</button></section></div>`;
 }
 function stepper(id, value, step){ return `<div class="stepper"><button data-step-target="${id}" data-step="-${step}">−</button><input id="${id}" type="number" value="${esc(value)}" step="${step}" min="0"><button data-step-target="${id}" data-step="${step}">+</button></div>`; }
 function followPanel(){
