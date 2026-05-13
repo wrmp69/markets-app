@@ -29,6 +29,7 @@ let statsMode = 'trend';
 let statsRange = 'month';
 let statsMetric = 'weight';
 let smartTemplatePlan = 'balanced';
+let bodyMapSide = 'front';
 let selectedMachineName = null;
 let formDraft = { poids: null, series: 1, reps: 10, rm: '' };
 
@@ -509,17 +510,21 @@ function muscleStats(group,days=30){
   const score=ago===null?0:Math.max(0,Math.min(100,Math.round(100-(Math.max(0,ago-4)*9)+(sets>16?-14:sets>10?-6:4))));
   return {group,rows,recent,last,ago,sets,vol,tone,status,advice,score};
 }
-function bodyZoneStats(){
-  const zones=[
-    {id:'chest',label:'Pectoraux',groups:['Pectoraux']},
-    {id:'back',label:'Dos',groups:['Dos']},
-    {id:'shoulders',label:'Épaules',groups:['Épaules']},
-    {id:'arms',label:'Bras',groups:['Biceps','Triceps','Avant-bras'].filter(g=>groups().includes(g))},
-    {id:'core',label:'Core',groups:['Abdos','Gainage'].filter(g=>groups().includes(g))},
-    {id:'legs',label:'Jambes',groups:['Jambes']}
+function bodyZoneDefinitions(){
+  const available=groups();
+  const keep=list=>list.filter(g=>available.includes(g));
+  return [
+    {id:'chest',label:'Pectoraux',side:'front',groups:keep(['Pectoraux']),hint:'Poussée / pecs'},
+    {id:'shoulders',label:'Épaules',side:'front',groups:keep(['Épaules']),hint:'Stabilité / deltoïdes'},
+    {id:'arms',label:'Bras',side:'front',groups:keep(['Biceps','Triceps','Avant-bras']),hint:'Biceps / triceps'},
+    {id:'core',label:'Core',side:'front',groups:keep(['Abdos','Gainage']),hint:'Gainage / abdos'},
+    {id:'legs',label:'Jambes',side:'front',groups:keep(['Jambes']),hint:'Quadriceps / jambes'},
+    {id:'back',label:'Dos',side:'back',groups:keep(['Dos']),hint:'Tirages / dorsaux'}
   ].filter(z=>z.groups.length);
+}
+function bodyZoneStats(){
   const toneRank={danger:5,late:4,ready:3,loaded:2,hot:1,empty:0};
-  return zones.map(z=>{
+  return bodyZoneDefinitions().map(z=>{
     const stats=z.groups.map(g=>muscleStats(g,30));
     const worst=stats.slice().sort((a,b)=>toneRank[b.tone]-toneRank[a.tone])[0]||stats[0];
     const sets=stats.reduce((s,x)=>s+x.sets,0), vol=stats.reduce((s,x)=>s+x.vol,0);
@@ -527,45 +532,73 @@ function bodyZoneStats(){
     return {...z,stats,worst,sets,vol,ago:ago===999?null:ago};
   });
 }
+function bodyExercisesForGroups(groupList){
+  const selected=Array.isArray(groupList)?groupList:String(groupList||'').split('|').filter(Boolean);
+  return allMachines().filter(m=>selected.includes(m.groupe)).map(m=>{
+    const rows=entriesForExercise(m.nom);
+    const last=lastEntryFor(m.nom);
+    const goal=getExerciseGoal(m.nom);
+    const best=rows.length?Math.max(...rows.map(e=>Number(e.poids)||0)):0;
+    const score=(last?30:0)+(rows.length*2)+(m.video?4:0)+best/10;
+    return {machine:m,last,goal,best,score};
+  }).sort((a,b)=>b.score-a.score||a.machine.nom.localeCompare(b.machine.nom)).slice(0,7);
+}
+function bodyPrimaryExercise(groupList){ return bodyExercisesForGroups(groupList)[0]||null; }
+function bodyStartExercise(name){
+  const m=machineByName(name); if(!m) return toast('Exercice introuvable','warn');
+  $('#modal-root').innerHTML='';
+  selectedMachineName=m.nom;
+  groupFilter=m.groupe||'';
+  const last=lastEntryFor(m.nom);
+  formDraft={poids:preferredWeightForExercise(m.nom)||last?.poids||m.poids?.[0]||20,series:1,reps:last?.reps||10,rm:''};
+  setRoute('session');
+}
 function humanAtlasClass(z){ return `anatomy-zone muscle-${z?.worst?.tone||'empty'}`; }
-function bodyPremiumClass(z){ return `premium-hit hit-${z?.worst?.tone||'empty'}`; }
+function bodyPremiumClass(z){ return `premium-hit hit-${z?.worst?.tone||'empty'} ${z?.side?`hit-side-${z.side}`:''}`; }
 function bodyHumanSvg(zones){
   const byId=Object.fromEntries(zones.map(z=>[z.id,z]));
-  const hit=(id,label='')=>{
+  const hit=(id,label='',side='front')=>{
     const z=byId[id];
     const groups=(z?.groups||[]).join('|');
+    const muted=(bodyMapSide==='front'&&side==='back')||(bodyMapSide==='back'&&side==='front');
     const action=groups?`data-action="body-focus" data-groups="${esc(groups)}" role="button" tabindex="0"`:'aria-disabled="true"';
-    return `class="${bodyPremiumClass(z)}" ${action} aria-label="${esc(z?.label||label)}"`;
+    return `class="${bodyPremiumClass(z)} ${muted?'is-muted':''}" ${action} aria-label="${esc(z?.label||label)}"`;
   };
-  return `<div class="body-premium-map" aria-label="Carte musculaire interactive">
+  return `<div class="body-premium-map musclewiki-inspired side-${bodyMapSide}" aria-label="Carte musculaire interactive">
     <img class="body-premium-img" src="assets/body-map-premium.svg" alt="Illustration anatomique musculaire face et dos" loading="lazy">
     <svg class="body-premium-overlay" viewBox="0 0 900 620" aria-hidden="false">
-      <g ${hit('chest','Pectoraux')}>
+      <g ${hit('chest','Pectoraux','front')}>
         <path d="M180 152 C214 123 246 124 275 154 C268 198 238 218 197 207 C174 196 166 176 180 152Z"/>
         <path d="M285 154 C314 124 346 123 380 152 C394 176 386 196 363 207 C322 218 292 198 285 154Z"/>
       </g>
-      <g ${hit('shoulders','Épaules')}>
+      <g ${hit('shoulders','Épaules','front')}>
         <path d="M132 140 C148 110 177 99 203 117 C188 137 177 165 166 195 C142 192 126 177 121 158Z"/>
         <path d="M357 117 C383 99 412 110 428 140 C434 158 418 192 394 195 C383 165 372 137 357 117Z"/>
+      </g>
+      <g ${hit('arms','Bras','front')}>
+        <path d="M125 195 C104 243 99 303 116 330 C135 341 149 316 151 278 C154 238 164 209 181 190 C164 199 143 201 125 195Z"/>
+        <path d="M435 195 C456 243 461 303 444 330 C425 341 411 316 409 278 C406 238 396 209 379 190 C396 199 417 201 435 195Z"/>
+      </g>
+      <g ${hit('core','Core','front')}>
+        <path d="M224 214 C248 223 312 223 336 214 C344 275 331 337 304 371 C287 388 273 388 256 371 C229 337 216 275 224 214Z"/>
+      </g>
+      <g ${hit('legs','Jambes','front')}>
+        <path d="M213 390 C247 388 267 408 272 471 L262 568 C249 606 223 602 214 560 C207 504 199 426 213 390Z"/>
+        <path d="M347 390 C313 388 293 408 288 471 L298 568 C311 606 337 602 346 560 C353 504 361 426 347 390Z"/>
+      </g>
+      <g ${hit('shoulders','Épaules arrière','back')}>
         <path d="M545 141 C562 110 590 100 616 118 C599 139 589 166 579 196 C554 193 538 178 533 158Z"/>
         <path d="M753 118 C779 100 807 110 824 141 C830 158 814 193 789 196 C779 166 770 139 753 118Z"/>
       </g>
-      <g ${hit('arms','Bras')}>
-        <path d="M125 195 C104 243 99 303 116 330 C135 341 149 316 151 278 C154 238 164 209 181 190 C164 199 143 201 125 195Z"/>
-        <path d="M435 195 C456 243 461 303 444 330 C425 341 411 316 409 278 C406 238 396 209 379 190 C396 199 417 201 435 195Z"/>
+      <g ${hit('arms','Bras arrière','back')}>
         <path d="M537 196 C517 242 511 302 528 330 C548 341 561 317 564 279 C566 239 576 209 593 190 C577 200 556 201 537 196Z"/>
         <path d="M832 196 C852 242 858 302 841 330 C821 341 808 317 805 279 C803 239 793 209 776 190 C792 200 813 201 832 196Z"/>
       </g>
-      <g ${hit('core','Core')}>
-        <path d="M224 214 C248 223 312 223 336 214 C344 275 331 337 304 371 C287 388 273 388 256 371 C229 337 216 275 224 214Z"/>
-      </g>
-      <g ${hit('legs','Jambes')}>
-        <path d="M213 390 C247 388 267 408 272 471 L262 568 C249 606 223 602 214 560 C207 504 199 426 213 390Z"/>
-        <path d="M347 390 C313 388 293 408 288 471 L298 568 C311 606 337 602 346 560 C353 504 361 426 347 390Z"/>
+      <g ${hit('legs','Jambes arrière','back')}>
         <path d="M622 390 C653 389 675 408 680 471 L670 568 C657 606 631 602 622 560 C615 504 608 426 622 390Z"/>
         <path d="M746 390 C715 389 693 408 688 471 L698 568 C711 606 737 602 746 560 C753 504 760 426 746 390Z"/>
       </g>
-      <g ${hit('back','Dos')}>
+      <g ${hit('back','Dos','back')}>
         <path d="M588 151 C624 121 684 121 720 151 C713 253 689 334 654 384 C619 334 595 253 588 151Z"/>
       </g>
     </svg>
@@ -575,10 +608,15 @@ function bodyHumanSvg(zones){
 function renderBodyMap(){
   const zones=bodyZoneStats();
   const late=zones.filter(z=>['danger','late'].includes(z.worst?.tone));
+  const ready=zones.filter(z=>z.worst?.tone==='ready');
   const hot=zones.filter(z=>['hot','loaded'].includes(z.worst?.tone));
+  const target=late[0]||ready[0]||zones[0];
+  const rec=target?bodyPrimaryExercise(target.groups):null;
   const headline=late[0]?`${late[0].label} à relancer`:hot[0]?`${hot[0].label} déjà chargé`:'Répartition correcte';
-  const rows=zones.map(z=>`<button class="body-row ${z.worst?.tone||'empty'}" data-action="body-focus" data-groups="${esc(z.groups.join('|'))}"><span>${esc(z.label)}</span><b>${esc(z.worst?.status||'—')}</b><small>${z.sets} série(s) · ${z.ago===null?'jamais':`J-${z.ago}`}</small></button>`).join('');
-  return `<section class="bodymap-card human-card card"><div class="section-title no-margin"><div><div class="eyebrow">Vue corps humain</div><h2>Récupération musculaire</h2></div><span class="body-score">${esc(headline)}</span></div><div class="bodymap-layout human-layout"><div class="body-figure human-figure">${bodyHumanSvg(zones)}</div><div class="body-list">${rows}</div></div><p class="muted small-text body-help">Clique directement une zone du corps. Néon = prêt, orange = chargé, rouge = en retard.</p></section>`;
+  const visible=zones.filter(z=>bodyMapSide==='back'?['back','shoulders','arms','legs'].includes(z.id):['chest','shoulders','arms','core','legs'].includes(z.id));
+  const rows=visible.map(z=>`<button class="body-row ${z.worst?.tone||'empty'}" data-action="body-focus" data-groups="${esc(z.groups.join('|'))}"><span>${esc(z.label)}</span><b>${esc(z.worst?.status||'—')}</b><small>${z.sets} série(s) · ${z.ago===null?'jamais':`J-${z.ago}`} · ${esc(z.hint||'')}</small></button>`).join('');
+  const recBlock=target?`<div class="body-reco-card"><div><span>Recommandé aujourd’hui</span><b>${esc(target.label)}</b><small>${rec?`${esc(rec.machine.nom)} · ${rec.goal?.main||'objectif à construire'}`:'Ajoute un exercice à ce groupe'}</small></div>${rec?`<button class="btn primary small" data-action="body-start-exercise" data-name="${esc(rec.machine.nom)}">Lancer</button>`:''}</div>`:'';
+  return `<section class="bodymap-card human-card muscle-hub card"><div class="section-title no-margin"><div><div class="eyebrow">Muscle map</div><h2>Choisis un muscle</h2></div><span class="body-score">${esc(headline)}</span></div>${recBlock}<div class="body-map-controls"><button class="tab ${bodyMapSide==='front'?'is-active':''}" data-action="body-side" data-side="front">Face</button><button class="tab ${bodyMapSide==='back'?'is-active':''}" data-action="body-side" data-side="back">Dos</button></div><div class="bodymap-layout human-layout muscle-hub-layout"><div class="body-figure human-figure">${bodyHumanSvg(zones)}</div><div class="body-list muscle-panel"><div class="eyebrow">Zones ${bodyMapSide==='back'?'dos':'face'}</div>${rows}</div></div><p class="muted small-text body-help">Clique un muscle pour ouvrir une fiche avec recommandation, alternatives, fiche exercice et vidéo.</p></section>`;
 }
 function openBodyFocus(groupsStr=''){
   const selected=String(groupsStr).split('|').filter(Boolean);
@@ -586,8 +624,10 @@ function openBodyFocus(groupsStr=''){
   const title=selected.join(' / ')||'Groupe musculaire';
   const totalSets=stats.reduce((s,x)=>s+x.sets,0), totalVol=Math.round(stats.reduce((s,x)=>s+x.vol,0));
   const main=stats.slice().sort((a,b)=>(b.ago??999)-(a.ago??999))[0]||stats[0];
-  const exercises=[...new Set(datedWorkoutRows().filter(e=>selected.includes(e.groupe)).map(e=>e.nom))].slice(0,7);
-  $('#modal-root').innerHTML=`<div class="modal-backdrop"><div class="modal body-modal"><div class="between"><div><div class="eyebrow">Focus musculaire</div><h2>${esc(title)}</h2></div><button class="btn small secondary" data-action="modal-close">Fermer</button></div><div class="body-focus-grid"><div><span>Statut</span><b>${esc(main?.status||'À construire')}</b></div><div><span>Séries 30j</span><b>${totalSets}</b></div><div><span>Volume 30j</span><b>${totalVol} kg</b></div><div><span>Dernier travail</span><b>${main?.ago===null?'—':`J-${main.ago}`}</b></div></div><section class="book-section"><h3>Conseil coach</h3><p>${esc(main?.advice||'Construis un peu plus d’historique pour lire ce groupe.')}</p></section><section class="book-section"><h3>Exercices liés</h3>${exercises.length?`<div class="body-exos">${exercises.map(n=>`<button data-action="exercise-open" data-name="${esc(n)}">${esc(n)}</button>`).join('')}</div>`:'<p class="muted">Aucun exercice enregistré récemment.</p>'}</section></div></div>`;
+  const exercises=bodyExercisesForGroups(selected);
+  const best=exercises[0];
+  const exCards=exercises.length?exercises.map((x,i)=>`<article class="body-exercise-card ${i===0?'is-recommended':''}"><div><span>${i===0?'Recommandé':'Alternative'}</span><b>${esc(x.machine.nom)}</b><small>${x.goal?.main?esc(x.goal.main):(x.last?`${x.last.poids} kg × ${x.last.reps}`:'Pas encore travaillé')}</small></div><div class="body-exercise-actions"><button class="btn primary small" data-action="body-start-exercise" data-name="${esc(x.machine.nom)}">Lancer</button><button class="btn small" data-action="exercise-open" data-name="${esc(x.machine.nom)}">Fiche</button>${x.machine.video?`<button class="btn small" data-action="video-open" data-name="${esc(x.machine.nom)}">Vidéo</button>`:''}</div></article>`).join(''):'<p class="muted">Aucun exercice disponible pour ce groupe.</p>';
+  $('#modal-root').innerHTML=`<div class="modal-backdrop body-sheet-backdrop"><div class="modal body-modal body-sheet"><div class="body-sheet-handle"></div><div class="between"><div><div class="eyebrow">Focus musculaire</div><h2>${esc(title)}</h2></div><button class="btn small secondary" data-action="modal-close">Fermer</button></div><div class="body-focus-grid"><div><span>Statut</span><b>${esc(main?.status||'À construire')}</b></div><div><span>Séries 30j</span><b>${totalSets}</b></div><div><span>Volume 30j</span><b>${totalVol} kg</b></div><div><span>Dernier travail</span><b>${main?.ago===null?'—':`J-${main.ago}`}</b></div></div>${best?`<section class="body-coach-pick"><span>Prochaine meilleure action</span><h3>${esc(best.machine.nom)}</h3><p>${esc(best.goal?.reason||main?.advice||'Travaille propre, sans forcer inutilement.')}</p><button class="btn primary full" data-action="body-start-exercise" data-name="${esc(best.machine.nom)}">Démarrer cet exercice</button></section>`:''}<section class="book-section"><h3>Conseil coach</h3><p>${esc(main?.advice||'Construis un peu plus d’historique pour lire ce groupe.')}</p></section><section class="book-section"><h3>Exercices ciblés</h3><div class="body-exercise-list">${exCards}</div></section></div></div>`;
 }
 
 function statsView(){
@@ -971,8 +1011,10 @@ function bindEvents(){ document.addEventListener('click', async e=>{
   if(action==='book-close'){ $('#modal-root').innerHTML=''; }
   if(action==='exercise-book-tab'){ exerciseBookTab=el.dataset.tab||'analyse'; openExerciseBook(exerciseDetailName); }
   if(action==='body-focus') openBodyFocus(el.dataset.groups||'');
+  if(action==='body-side'){ bodyMapSide=el.dataset.side||'front'; render(); }
+  if(action==='body-start-exercise') bodyStartExercise(el.dataset.name||'');
   if(action==='machine-new') machineModal(null);
-  if(action==='video-open') openVideoModal(currentMachine());
+  if(action==='video-open') openVideoModal(el.dataset.name ? machineByName(el.dataset.name) : currentMachine());
   if(action==='video-external'){ const url=el.dataset.url; if(url) window.open(url,'_blank','noopener'); }
   if(action==='machine-edit') machineModal($('#machine-select')?.value);
   if(action==='machine-save') saveMachine(el.dataset.original||'');
