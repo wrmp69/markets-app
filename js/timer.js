@@ -10,6 +10,7 @@ let running=false;
 let hooksBound=false;
 let audioCtx=null;
 let finishTimeout=null;
+let lastBeepLeft=null;
 
 const CIRC = 2 * Math.PI * 52;
 const MINI_CIRC = 2 * Math.PI * 18;
@@ -40,19 +41,44 @@ function unlockAudio(){
   }
 }
 
-function tone(freq,start,duration,gainNode){
+function tone(freq,start,duration,gainNode,type='square',peak=.72){
   if(!audioCtx) return;
   const osc=audioCtx.createOscillator();
   const gain=audioCtx.createGain();
-  osc.type='triangle';
+  osc.type=type;
   osc.frequency.setValueAtTime(freq,start);
   gain.gain.setValueAtTime(0.0001,start);
-  gain.gain.exponentialRampToValueAtTime(0.22,start+0.018);
+  gain.gain.exponentialRampToValueAtTime(Math.max(.001,peak),start+0.012);
   gain.gain.exponentialRampToValueAtTime(0.0001,start+duration);
   osc.connect(gain);
   gain.connect(gainNode);
   osc.start(start);
-  osc.stop(start+duration+0.03);
+  osc.stop(start+duration+0.04);
+}
+
+function audioBus(now,until){
+  const master=audioCtx.createGain();
+  const compressor=audioCtx.createDynamicsCompressor();
+  compressor.threshold.setValueAtTime(-18,now);
+  compressor.knee.setValueAtTime(20,now);
+  compressor.ratio.setValueAtTime(8,now);
+  compressor.attack.setValueAtTime(.003,now);
+  compressor.release.setValueAtTime(.18,now);
+  master.gain.setValueAtTime(0.0001,now);
+  master.gain.exponentialRampToValueAtTime(.72,now+.018);
+  master.gain.exponentialRampToValueAtTime(0.0001,until);
+  master.connect(compressor);
+  compressor.connect(audioCtx.destination);
+  return master;
+}
+
+function playCountdownBeep(n){
+  const ctx=unlockAudio();
+  if(!ctx||ctx.state!=='running') return;
+  audioCtx=ctx;
+  const now=audioCtx.currentTime;
+  const master=audioBus(now,now+.18);
+  tone(n===1?1046:880,now,.10,master,'square',.38);
 }
 
 function playFinishSound(){
@@ -60,14 +86,13 @@ function playFinishSound(){
   if(!ctx||ctx.state!=='running') return;
   audioCtx=ctx;
   const now=audioCtx.currentTime;
-  const master=audioCtx.createGain();
-  master.gain.setValueAtTime(0.0001,now);
-  master.gain.exponentialRampToValueAtTime(0.18,now+0.02);
-  master.gain.exponentialRampToValueAtTime(0.0001,now+0.9);
-  master.connect(audioCtx.destination);
-  tone(523.25,now,0.18,master);
-  tone(659.25,now+0.16,0.18,master);
-  tone(783.99,now+0.32,0.34,master);
+  const master=audioBus(now,now+1.55);
+  tone(659.25,now,.16,master,'square',.82);
+  tone(880,now+.17,.16,master,'square',.82);
+  tone(1046.5,now+.34,.18,master,'square',.86);
+  tone(1318.5,now+.54,.34,master,'sawtooth',.78);
+  tone(392,now+.54,.40,master,'triangle',.50);
+  tone(988,now+.92,.28,master,'square',.70);
 }
 
 function syncLeft(){
@@ -121,6 +146,7 @@ function hideTimer(){
 function finishTimer(){
   if(!running) return;
   running=false;
+  lastBeepLeft=null;
   if(interval) clearInterval(interval);
   interval=null;
   left=0;
@@ -130,15 +156,20 @@ function finishTimer(){
   const mini=$('#timer-mini-left'); if(mini) mini.textContent='GO';
   const title=$('#timer-exo'); if(title) title.textContent='Repos terminé';
   playFinishSound();
-  if(navigator.vibrate) navigator.vibrate([90,45,90,45,130]);
+  if(navigator.vibrate) navigator.vibrate([130,55,130,55,190,55,260]);
   toast('Repos terminé','ok');
   if(finishTimeout) clearTimeout(finishTimeout);
-  finishTimeout=setTimeout(hideTimer,1600);
+  finishTimeout=setTimeout(hideTimer,2300);
 }
 
 function tick(){
   if(!running) return;
   syncLeft();
+  if(left>0 && left<=3 && left!==lastBeepLeft){
+    lastBeepLeft=left;
+    playCountdownBeep(left);
+    if(navigator.vibrate) navigator.vibrate(left===1?[70,30,70]:55);
+  }
   render();
   if(left<=0) finishTimer();
 }
@@ -155,6 +186,7 @@ function bindResumeHooks(){
 
 export function stopTimer(){
   running=false;
+  lastBeepLeft=null;
   endsAt=0;
   if(interval) clearInterval(interval);
   if(finishTimeout) clearTimeout(finishTimeout);
@@ -178,6 +210,7 @@ export function startTimer(seconds=60, name='Repos'){
   unlockAudio();
   total=Math.max(1,Number(seconds)||60);
   left=total;
+  lastBeepLeft=null;
   currentName=name;
   minimized=false;
   running=true;
