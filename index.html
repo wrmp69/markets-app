@@ -7,6 +7,9 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="apple-mobile-web-app-title" content="GymLog K&J" />
   <meta name="theme-color" content="#0f0f0f" />
+  <meta name="theme-color" content="#030609" media="(prefers-color-scheme: dark)" />
+  <meta name="theme-color" content="#f4efe7" media="(prefers-color-scheme: light)" />
+  <link rel="apple-touch-icon" href="assets/icon-192.png" />
   <title>GymLog K&J</title>
   <link rel="manifest" href="manifest.json" />
   <link rel="stylesheet" href="css/app.css" />
@@ -47,5 +50,13 @@
       <div class="timer-actions timer-actions-3"><button class="btn secondary" id="timer-skip">Fermer</button><button class="btn secondary" id="timer-minimize">Réduire</button><button class="btn primary" id="timer-restart">Relancer</button></div>
     </div>
   </section>
+
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('./service-worker.js').catch(() => {});
+      });
+    }
+  </script>
 </body>
 </html>
