@@ -1364,3 +1364,60 @@ box-shadow:0 0 28px rgba(184,121,58,.30),inset 0 0 28px rgba(184,121,58,.10);
 @media(prefers-reduced-motion:reduce){
 .timer.is-finished .timer-card,.timer.is-finished .timer-card:after,.timer.is-finished .timer-ring strong,.timer-mini.is-finished{animation:none!important}
 }
+
+/* ===== History Clean Day Accordion ===== */
+.history-day-head{
+display:grid;
+grid-template-columns:1fr auto;
+align-items:center;
+gap:12px;
+}
+.history-day-main{
+min-width:0;
+border:0;
+background:transparent;
+color:var(--text);
+text-align:left;
+padding:0;
+display:flex;
+align-items:center;
+justify-content:space-between;
+gap:10px;
+}
+.history-day-main .item-title,
+.history-day-main .meta{
+pointer-events:none;
+}
+.history-day-chevron{
+width:30px;
+height:30px;
+display:grid;
+place-items:center;
+border:1px solid var(--line);
+border-radius:999px;
+background:var(--surface2);
+color:var(--accent);
+font-size:18px;
+font-weight:900;
+flex:0 0 auto;
+}
+.history-day.is-open .history-day-chevron{
+background:var(--accent);
+color:#07100f;
+border-color:var(--accent);
+}
+.history-day:not(.is-open) .history-expanded{
+display:none;
+}
+@media(max-width:520px){
+.history-day-head{
+grid-template-columns:1fr;
+}
+.history-day-head>.row{
+justify-content:stretch;
+width:100%;
+}
+.history-day-head>.row .btn.secondary{
+flex:1;
+}
+}
