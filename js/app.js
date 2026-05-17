@@ -14,6 +14,8 @@ state.settings.timerDefault ||= 60;
 state.bodyWeight ||= [];
 state.ui ||= { entryOpen: {}, followMode: null, followScroll: 0 };
 state.ui.prEvents ||= [];
+state.ui.historyOpen ||= {};
+state.ui.historyExerciseOpen ||= {};
 
 let route = 'home';
 let groupFilter = '';
@@ -29,7 +31,6 @@ let statsMode = 'trend';
 let statsRange = 'month';
 let statsMetric = 'weight';
 let smartTemplatePlan = 'balanced';
-let bodyMapSide = 'front';
 let selectedMachineName = null;
 let formDraft = { poids: null, series: 1, reps: 10, rm: '' };
 
@@ -483,13 +484,50 @@ function entryCard(e){
 function cardioForm(){ return `<section class="card"><div class="field"><label>Type cardio</label><div class="chips">${['marche','course','velo','escalier'].map(t=>`<button class="chip ${cardioType===t?'is-active':''}" data-cardio-type="${t}">${t}</button>`).join('')}</div></div><div class="grid-3"><div class="field"><label>Durée</label>${stepper('c-duration',20,5)}</div><div class="field"><label>${cardioType==='velo'?'Résistance':cardioType==='escalier'?'Étages':'Vitesse'}</label>${stepper('c-main', cardioType==='velo'?5:cardioType==='escalier'?20:6, cardioType==='velo'||cardioType==='escalier'?1:0.5)}</div><div class="field"><label>${cardioType==='velo'?'RPM':cardioType==='escalier'?'Intensité':'Pente %'}</label>${stepper('c-extra', cardioType==='velo'?80:0, cardioType==='velo'?5:1)}</div></div><button class="btn primary full" data-action="cardio-add">✓ Ajouter cardio</button></section><section><div class="section-title"><h2>Séance en cours</h2></div>${currentSessionList()}</section>`; }
 function cardioIcon(t){ return ''; }
 function cardioItem(c){ return `<div class="item between"><div><div class="item-title">${esc(c.type)}</div><div class="meta">${c.duration} min · ${esc(c.label||'')}</div></div><button class="btn small danger" data-action="cardio-delete" data-id="${c.id}">✕</button></div>`; }
-function historyView(){ const days=Object.entries(state.history||{}).sort(([a],[b])=>b.localeCompare(a)); return days.length ? `<div class="list">${days.map(([d,v])=>dayCard(d,v,true)).join('')}</div>` : `<div class="empty">Pas encore d’historique.</div>`; }
-function dayCard(date, day, deletable){ const entries=day.entries||[], cardio=day.cardio||[]; const vol=entries.reduce((s,e)=>s+volume(e),0); return `<article class="item"><div class="between"><div><div class="item-title">${fmtDateLong(date)}</div><div class="meta">${entries.length} exercice(s) · ${cardio.length} cardio · ${Math.round(vol)} kg</div></div>${deletable?`<button class="btn small danger" data-action="day-delete" data-date="${date}">Suppr.</button>`:''}</div><div class="list day-mini">${entries.slice(0,8).map(e=>`<div class="between"><span class="small-text">${esc(e.nom)}</span><span class="badge ac">${e.series}×${e.reps} · ${e.poids}kg</span></div>`).join('')}${cardio.map(c=>`<div class="between"><span class="small-text">${esc(c.type)}</span><span class="badge purple">${c.duration}min</span></div>`).join('')}</div></article>`; }
+function historyView(){
+  const days=Object.entries(state.history||{}).sort(([a],[b])=>b.localeCompare(a));
+  return days.length ? `<div class="list history-list">${days.map(([d,v])=>dayCard(d,v,true)).join('')}</div>` : `<div class="empty">Pas encore d’historique.</div>`;
+}
+function historyKey(v=''){ return String(v).normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-zA-Z0-9]+/g,'-').replace(/^-|-$/g,'').toLowerCase() || 'exo'; }
+function groupDayEntries(entries=[]){
+  const map=new Map();
+  entries.forEach((e,i)=>{
+    const key=historyKey(e.nom||`exo-${i}`);
+    if(!map.has(key)) map.set(key,{key,nom:e.nom||'Exercice',groupe:e.groupe||'',rows:[]});
+    map.get(key).rows.push(e);
+  });
+  return [...map.values()].map(g=>{
+    const rows=g.rows, vol=rows.reduce((s,e)=>s+volume(e),0), best=bestSetForRows(rows), prs=rows.filter(e=>e.prType).length;
+    const weights=[...new Set(rows.map(e=>Number(e.poids)||0).filter(Boolean))];
+    const weightLabel=weights.length===1?`${weights[0]} kg`:`${weights[0]||'—'}-${weights.at(-1)||'—'} kg`;
+    const reps=rows.map(e=>Number(e.reps)||0).filter(Boolean).join(' / ');
+    return {...g,vol,best,prs,weightLabel,reps};
+  });
+}
+function historyExerciseRows(date, group){
+  const open=!!state.ui.historyExerciseOpen?.[`${date}:${group.key}`];
+  if(!open) return '';
+  return `<div class="history-set-list">${group.rows.map((e,i)=>`<div class="history-set"><span>Série ${esc(e.series||i+1)}</span><b>${esc(e.poids)} kg × ${esc(e.reps)}</b><small>1RM ${Number(e.rm1reel)||oneRM(e.poids,e.reps)}${e.prType?` · NEW PR`:''}</small></div>`).join('')}</div>`;
+}
+function historyExerciseCard(date, group){
+  const open=!!state.ui.historyExerciseOpen?.[`${date}:${group.key}`];
+  const best=group.best?`${group.best.poids} kg × ${group.best.reps}`:'—';
+  return `<div class="history-exo"><button class="history-exo-head" data-action="history-exo-toggle" data-date="${esc(date)}" data-key="${esc(group.key)}"><div><b>${esc(group.nom)}</b><span>${group.rows.length} série(s) · ${esc(group.weightLabel)} · ${Math.round(group.vol)} kg</span></div><div><em>${esc(best)}</em>${group.prs?`<i>NEW PR ×${group.prs}</i>`:''}</div><strong>${open?'⌄':'›'}</strong></button>${historyExerciseRows(date,group)}</div>`;
+}
+function historyPreviewRow(group){
+  const best=group.best?`${group.best.poids}kg × ${group.best.reps}`:`${group.rows[0]?.poids||'—'}kg`;
+  return `<div class="between history-preview-row"><span class="small-text">${esc(group.nom)}</span><span class="badge ac">${group.rows.length} série(s) · ${esc(best)}</span></div>`;
+}
+function dayCard(date, day, deletable){
+  const entries=day.entries||[], cardio=day.cardio||[], groups=groupDayEntries(entries);
+  const vol=entries.reduce((s,e)=>s+volume(e),0), open=!!state.ui.historyOpen?.[date], prCount=entries.filter(e=>e.prType).length;
+  const preview=groups.slice(0,5).map(historyPreviewRow).join('');
+  const more=groups.length>5?`<div class="history-more muted">+ ${groups.length-5} exercice(s) masqué(s)</div>`:'';
+  const cardioPreview=cardio.slice(0,2).map(c=>`<div class="between history-preview-row"><span class="small-text">${esc(c.type)}</span><span class="badge purple">${c.duration}min</span></div>`).join('');
+  const expanded=open?`<div class="history-expanded"><div class="history-summary-grid"><div><b>${groups.length}</b><span>exercices</span></div><div><b>${entries.length}</b><span>séries</span></div><div><b>${Math.round(vol)}</b><span>kg volume</span></div><div><b>${prCount}</b><span>PR</span></div></div><div class="history-exos">${groups.map(g=>historyExerciseCard(date,g)).join('')}</div>${cardio.length?`<div class="history-cardio"><h4>Cardio</h4>${cardio.map(c=>`<div class="between"><span>${esc(c.type)}</span><span class="badge purple">${c.duration} min · ${esc(c.label||'')}</span></div>`).join('')}</div>`:''}</div>`:'';
+  return `<article class="item history-day ${open?'is-open':''}"><div class="between history-day-head"><div><div class="item-title">${fmtDateLong(date)}</div><div class="meta">${groups.length} exercice(s) · ${entries.length} série(s) · ${cardio.length} cardio · ${Math.round(vol)} kg${prCount?` · ${prCount} PR`:''}</div></div><div class="row"><button class="btn small secondary" data-action="history-day-toggle" data-date="${date}">${open?'Masquer':'Voir tout'}</button>${deletable?`<button class="btn small danger" data-action="day-delete" data-date="${date}">Suppr.</button>`:''}</div></div><div class="list day-mini">${preview}${cardioPreview}${!open?more:''}</div>${expanded}</article>`;
+}
 
-
-
-const BODY_PART_GROUPS = Object.freeze({"cou_trapezes":["Épaules","Dos"],"epaules":["Épaules"],"pectoraux":["Pectoraux"],"biceps":["Biceps"],"avant_bras":["Biceps","Triceps"],"mains":["Biceps","Triceps"],"obliques":["Abdos"],"abdominaux":["Abdos"],"adducteurs":["Jambes"],"quadriceps":["Jambes"],"genoux":["Jambes"],"tibias_mollets":["Mollets","Jambes"],"pieds":["Mollets","Jambes"],"haut_du_dos":["Dos"],"grand_dorsal":["Dos"],"triceps":["Triceps"],"lombaires":["Dos"],"fessiers":["Jambes"],"ischio_jambiers":["Jambes"],"mollets":["Mollets"]});
-const BODY_PARTS = Object.freeze([{"id":"front-cou-trapezes","part":"cou_trapezes","view":"front","lateral":"centre","label":"Cou / trapèzes avant","d":"M248 183 C267 169 288 160 298 153 L300 116 C315 133 334 139 336 139 C351 139 365 132 375 116 L376 154 C392 161 412 172 425 183 C402 185 383 188 367 199 C357 189 346 186 336 187 C323 185 312 189 302 199 C286 188 269 185 248 183 Z"},{"id":"front-epaule-gauche","part":"epaules","view":"front","lateral":"gauche","label":"Épaule avant gauche","d":"M171 269 C176 226 199 194 248 183 C273 178 292 183 302 198 C282 204 266 224 249 244 C227 270 204 262 171 269 Z"},{"id":"front-epaule-droite","part":"epaules","view":"front","lateral":"droite","label":"Épaule avant droite","d":"M399 198 C410 183 429 178 455 183 C504 194 527 226 532 269 C499 262 476 270 454 244 C437 224 421 204 399 198 Z"},{"id":"front-pectoraux-gauche","part":"pectoraux","view":"front","lateral":"gauche","label":"Pectoraux gauche","d":"M248 184 C283 181 324 181 333 200 L334 260 C322 288 300 300 264 294 C239 289 224 274 219 250 C213 219 226 195 248 184 Z"},{"id":"front-pectoraux-droite","part":"pectoraux","view":"front","lateral":"droite","label":"Pectoraux droite","d":"M338 200 C347 181 388 181 423 184 C445 195 458 219 452 250 C447 274 432 289 407 294 C371 300 349 288 337 260 Z"},{"id":"front-biceps-gauche","part":"biceps","view":"front","lateral":"gauche","label":"Biceps gauche","d":"M169 263 C198 254 224 258 226 285 C228 309 211 330 194 349 C180 365 159 374 148 363 C136 351 143 315 151 293 C156 278 160 267 169 263 Z"},{"id":"front-biceps-droite","part":"biceps","view":"front","lateral":"droite","label":"Biceps droite","d":"M503 263 C474 254 448 258 446 285 C444 309 461 330 478 349 C492 365 513 374 524 363 C536 351 529 315 521 293 C516 278 512 267 503 263 Z"},{"id":"front-avant-bras-gauche","part":"avant_bras","view":"front","lateral":"gauche","label":"Avant-bras gauche","d":"M142 336 C135 363 119 389 101 412 C86 432 76 456 66 474 C62 481 70 485 84 476 C109 459 128 438 144 414 C158 393 177 376 184 351 C170 357 151 353 142 336 Z"},{"id":"front-avant-bras-droite","part":"avant_bras","view":"front","lateral":"droite","label":"Avant-bras droite","d":"M530 336 C537 363 553 389 571 412 C586 432 596 456 606 474 C610 481 602 485 588 476 C563 459 544 438 528 414 C514 393 495 376 488 351 C502 357 521 353 530 336 Z"},{"id":"front-main-gauche","part":"mains","view":"front","lateral":"gauche","label":"Main gauche","d":"M67 475 C70 493 61 506 56 520 C50 535 49 558 45 570 C38 569 42 543 42 528 C44 513 49 502 53 490 C56 482 60 477 67 475 Z"},{"id":"front-main-droite","part":"mains","view":"front","lateral":"droite","label":"Main droite","d":"M605 475 C602 493 611 506 616 520 C622 535 623 558 627 570 C634 569 630 543 630 528 C628 513 623 502 619 490 C616 482 612 477 605 475 Z"},{"id":"front-obliques-gauche","part":"obliques","view":"front","lateral":"gauche","label":"Obliques gauche","d":"M262 294 C276 299 286 304 291 314 C283 360 281 412 286 454 C267 457 252 443 252 411 C253 382 240 352 230 326 C241 323 254 311 262 294 Z"},{"id":"front-obliques-droite","part":"obliques","view":"front","lateral":"droite","label":"Obliques droite","d":"M410 294 C396 299 386 304 381 314 C389 360 391 412 386 454 C405 457 420 443 420 411 C419 382 432 352 442 326 C431 323 418 311 410 294 Z"},{"id":"front-abdominaux","part":"abdominaux","view":"front","lateral":"centre","label":"Abdominaux","d":"M293 293 C317 286 355 286 379 293 C387 326 388 453 354 501 C346 512 337 519 335 519 C333 519 324 512 316 501 C282 453 285 326 293 293 Z"},{"id":"front-bassin-adducteurs","part":"adducteurs","view":"front","lateral":"centre","label":"Bassin / adducteurs","d":"M286 458 C306 478 317 518 335 519 C353 518 366 478 386 458 C371 494 360 568 336 570 C310 568 301 493 286 458 Z"},{"id":"front-quadriceps-gauche","part":"quadriceps","view":"front","lateral":"gauche","label":"Quadriceps gauche","d":"M229 521 C250 551 302 570 334 570 C330 628 312 698 290 734 C276 760 262 751 256 732 C249 739 235 736 230 720 C215 648 218 574 229 521 Z"},{"id":"front-quadriceps-droite","part":"quadriceps","view":"front","lateral":"droite","label":"Quadriceps droite","d":"M443 521 C422 551 370 570 338 570 C342 628 360 698 382 734 C396 760 410 751 416 732 C423 739 437 736 442 720 C457 648 454 574 443 521 Z"},{"id":"front-genou-gauche","part":"genoux","view":"front","lateral":"gauche","label":"Genou gauche","d":"M228 777 C247 803 275 806 293 779 C286 799 285 821 282 835 C268 852 241 849 224 831 C221 813 222 793 228 777 Z"},{"id":"front-genou-droite","part":"genoux","view":"front","lateral":"droite","label":"Genou droite","d":"M444 777 C425 803 397 806 379 779 C386 799 387 821 390 835 C404 852 431 849 448 831 C451 813 450 793 444 777 Z"},{"id":"front-tibias-mollets-gauche","part":"tibias_mollets","view":"front","lateral":"gauche","label":"Tibias / mollets gauche","d":"M225 829 C240 848 266 853 282 836 C279 861 269 881 264 910 C259 937 258 970 260 990 C254 1006 232 1009 214 1019 C224 977 224 933 216 891 C211 861 215 842 225 829 Z"},{"id":"front-tibias-mollets-droite","part":"tibias_mollets","view":"front","lateral":"droite","label":"Tibias / mollets droite","d":"M447 829 C432 848 406 853 390 836 C393 861 403 881 408 910 C413 937 414 970 412 990 C418 1006 440 1009 458 1019 C448 977 448 933 456 891 C461 861 457 842 447 829 Z"},{"id":"front-pied-gauche","part":"pieds","view":"front","lateral":"gauche","label":"Pied gauche","d":"M214 1017 C234 1009 252 1000 259 989 C259 1009 260 1027 240 1035 C238 1049 216 1057 191 1064 C178 1064 174 1057 183 1044 C194 1032 204 1026 214 1017 Z"},{"id":"front-pied-droite","part":"pieds","view":"front","lateral":"droite","label":"Pied droite","d":"M458 1017 C438 1009 420 1000 413 989 C413 1009 412 1027 432 1035 C434 1049 456 1057 481 1064 C494 1064 498 1057 489 1044 C478 1032 468 1026 458 1017 Z"},{"id":"back-cou-trapezes","part":"cou_trapezes","view":"back","lateral":"centre","label":"Cou / trapèzes arrière","d":"M888 182 C910 168 930 160 943 154 L943 113 C960 124 980 127 982 127 C1004 126 1023 113 1024 113 L1024 154 C1036 160 1059 168 1076 182 C1052 184 1034 190 1016 202 C994 198 970 198 948 202 C929 190 911 184 888 182 Z"},{"id":"back-deltoide-gauche","part":"epaules","view":"back","lateral":"gauche","label":"Épaule arrière gauche","d":"M816 251 C820 216 846 190 888 182 C908 180 928 189 949 202 C932 219 918 239 902 246 C876 251 849 249 816 251 Z"},{"id":"back-deltoide-droite","part":"epaules","view":"back","lateral":"droite","label":"Épaule arrière droite","d":"M1148 251 C1144 216 1118 190 1076 182 C1056 180 1036 189 1015 202 C1032 219 1046 239 1062 246 C1088 251 1115 249 1148 251 Z"},{"id":"back-haut-du-dos","part":"haut_du_dos","view":"back","lateral":"centre","label":"Haut du dos","d":"M949 203 C971 199 995 199 1016 203 C1002 229 991 263 982 323 C973 263 963 229 949 203 Z"},{"id":"back-grand-dorsal-gauche","part":"grand_dorsal","view":"back","lateral":"gauche","label":"Grand dorsal gauche","d":"M887 183 C914 191 931 209 949 203 C962 235 976 279 982 322 C966 359 935 392 935 441 C906 451 877 430 872 389 C866 345 840 321 835 292 C830 260 848 219 887 183 Z"},{"id":"back-grand-dorsal-droite","part":"grand_dorsal","view":"back","lateral":"droite","label":"Grand dorsal droite","d":"M1077 183 C1050 191 1033 209 1015 203 C1002 235 988 279 982 322 C998 359 1029 392 1029 441 C1058 451 1087 430 1092 389 C1098 345 1124 321 1129 292 C1134 260 1116 219 1077 183 Z"},{"id":"back-triceps-gauche","part":"triceps","view":"back","lateral":"gauche","label":"Triceps gauche","d":"M812 252 C842 247 865 247 867 295 C865 315 849 337 823 361 C812 350 799 344 784 341 C790 313 794 274 812 252 Z"},{"id":"back-triceps-droite","part":"triceps","view":"back","lateral":"droite","label":"Triceps droite","d":"M1152 252 C1122 247 1099 247 1097 295 C1099 315 1115 337 1141 361 C1152 350 1165 344 1180 341 C1174 313 1170 274 1152 252 Z"},{"id":"back-avant-bras-gauche","part":"avant_bras","view":"back","lateral":"gauche","label":"Avant-bras gauche arrière","d":"M784 340 C775 376 753 405 733 430 C716 451 704 477 698 486 C691 486 689 475 696 453 C705 420 715 389 735 360 C748 341 765 331 784 340 Z"},{"id":"back-avant-bras-droite","part":"avant_bras","view":"back","lateral":"droite","label":"Avant-bras droite arrière","d":"M1180 340 C1189 376 1211 405 1231 430 C1248 451 1260 477 1266 486 C1273 486 1275 475 1268 453 C1259 420 1249 389 1229 360 C1216 341 1199 331 1180 340 Z"},{"id":"back-main-gauche","part":"mains","view":"back","lateral":"gauche","label":"Main gauche arrière","d":"M699 485 C704 499 699 513 694 526 C689 540 699 563 711 577 C719 573 711 558 713 544 C715 530 723 521 720 511 C713 504 710 492 699 485 Z"},{"id":"back-main-droite","part":"mains","view":"back","lateral":"droite","label":"Main droite arrière","d":"M1265 485 C1260 499 1265 513 1270 526 C1275 540 1265 563 1253 577 C1245 573 1253 558 1251 544 C1249 530 1241 521 1244 511 C1251 504 1254 492 1265 485 Z"},{"id":"back-lombaires","part":"lombaires","view":"back","lateral":"centre","label":"Lombaires","d":"M937 389 C950 352 967 333 982 323 C997 333 1014 352 1027 389 C1028 408 1028 430 1028 446 C1008 449 996 445 982 448 C968 445 956 449 936 446 C936 430 936 408 937 389 Z"},{"id":"back-fessier-gauche","part":"fessiers","view":"back","lateral":"gauche","label":"Fessier gauche","d":"M936 448 C956 444 974 447 982 466 L982 568 C945 574 909 568 895 548 C884 531 891 486 907 466 C916 456 926 451 936 448 Z"},{"id":"back-fessier-droite","part":"fessiers","view":"back","lateral":"droite","label":"Fessier droite","d":"M1028 448 C1008 444 990 447 982 466 L982 568 C1019 574 1055 568 1069 548 C1080 531 1073 486 1057 466 C1048 456 1038 451 1028 448 Z"},{"id":"back-ischios-gauche","part":"ischio_jambiers","view":"back","lateral":"gauche","label":"Ischio-jambiers gauche","d":"M896 548 C915 570 948 574 982 568 C980 627 960 700 934 747 C921 769 909 753 905 722 C898 739 886 758 876 750 C862 694 862 617 896 548 Z"},{"id":"back-ischios-droite","part":"ischio_jambiers","view":"back","lateral":"droite","label":"Ischio-jambiers droite","d":"M1068 548 C1049 570 1016 574 982 568 C984 627 1004 700 1030 747 C1043 769 1055 753 1059 722 C1066 739 1078 758 1088 750 C1102 694 1102 617 1068 548 Z"},{"id":"back-genou-gauche","part":"genoux","view":"back","lateral":"gauche","label":"Genou arrière gauche","d":"M874 797 C891 814 908 810 921 797 C927 797 931 812 929 835 C914 844 890 842 864 819 C866 808 869 801 874 797 Z"},{"id":"back-genou-droite","part":"genoux","view":"back","lateral":"droite","label":"Genou arrière droite","d":"M1090 797 C1073 814 1056 810 1043 797 C1037 797 1033 812 1035 835 C1050 844 1074 842 1100 819 C1098 808 1095 801 1090 797 Z"},{"id":"back-mollet-gauche","part":"mollets","view":"back","lateral":"gauche","label":"Mollet gauche","d":"M864 819 C886 840 912 843 928 835 C929 880 921 915 909 951 C897 987 895 1019 896 1048 C875 1055 855 1043 859 1013 C861 978 852 920 850 882 C847 852 854 832 864 819 Z"},{"id":"back-mollet-droite","part":"mollets","view":"back","lateral":"droite","label":"Mollet droite","d":"M1100 819 C1078 840 1052 843 1036 835 C1035 880 1043 915 1055 951 C1067 987 1069 1019 1068 1048 C1089 1055 1109 1043 1105 1013 C1103 978 1112 920 1114 882 C1117 852 1110 832 1100 819 Z"},{"id":"back-pied-gauche","part":"pieds","view":"back","lateral":"gauche","label":"Pied gauche arrière","d":"M857 1013 C871 1041 894 1045 896 1048 C894 1062 875 1067 852 1058 C835 1061 814 1055 818 1044 C827 1033 843 1031 857 1013 Z"},{"id":"back-pied-droite","part":"pieds","view":"back","lateral":"droite","label":"Pied droite arrière","d":"M1107 1013 C1093 1041 1070 1045 1068 1048 C1070 1062 1089 1067 1112 1058 C1129 1061 1150 1055 1146 1044 C1137 1033 1121 1031 1107 1013 Z"}]);
 
 function datedWorkoutRows(){
   const rows=[];
@@ -514,22 +552,17 @@ function muscleStats(group,days=30){
   const score=ago===null?0:Math.max(0,Math.min(100,Math.round(100-(Math.max(0,ago-4)*9)+(sets>16?-14:sets>10?-6:4))));
   return {group,rows,recent,last,ago,sets,vol,tone,status,advice,score};
 }
-function bodyZoneDefinitions(){
-  const available=groups();
-  const keep=list=>list.filter(g=>available.includes(g));
-  return BODY_PARTS.map(p=>({
-    id:p.id,
-    part:p.part,
-    label:p.label,
-    side:p.view,
-    lateral:p.lateral,
-    groups:keep(BODY_PART_GROUPS[p.part]||[]),
-    hint:p.view==='back'?'Vue dos':'Vue face'
-  })).filter(z=>z.groups.length);
-}
 function bodyZoneStats(){
+  const zones=[
+    {id:'chest',label:'Pectoraux',groups:['Pectoraux']},
+    {id:'back',label:'Dos',groups:['Dos']},
+    {id:'shoulders',label:'Épaules',groups:['Épaules']},
+    {id:'arms',label:'Bras',groups:['Biceps','Triceps','Avant-bras'].filter(g=>groups().includes(g))},
+    {id:'core',label:'Core',groups:['Abdos','Gainage'].filter(g=>groups().includes(g))},
+    {id:'legs',label:'Jambes',groups:['Jambes']}
+  ].filter(z=>z.groups.length);
   const toneRank={danger:5,late:4,ready:3,loaded:2,hot:1,empty:0};
-  return bodyZoneDefinitions().map(z=>{
+  return zones.map(z=>{
     const stats=z.groups.map(g=>muscleStats(g,30));
     const worst=stats.slice().sort((a,b)=>toneRank[b.tone]-toneRank[a.tone])[0]||stats[0];
     const sets=stats.reduce((s,x)=>s+x.sets,0), vol=stats.reduce((s,x)=>s+x.vol,0);
@@ -537,43 +570,47 @@ function bodyZoneStats(){
     return {...z,stats,worst,sets,vol,ago:ago===999?null:ago};
   });
 }
-function bodyExercisesForGroups(groupList){
-  const selected=Array.isArray(groupList)?groupList:String(groupList||'').split('|').filter(Boolean);
-  return allMachines().filter(m=>selected.includes(m.groupe)).map(m=>{
-    const rows=entriesForExercise(m.nom);
-    const last=lastEntryFor(m.nom);
-    const goal=getExerciseGoal(m.nom);
-    const best=rows.length?Math.max(...rows.map(e=>Number(e.poids)||0)):0;
-    const score=(last?30:0)+(rows.length*2)+(m.video?4:0)+best/10;
-    return {machine:m,last,goal,best,score};
-  }).sort((a,b)=>b.score-a.score||a.machine.nom.localeCompare(b.machine.nom)).slice(0,7);
-}
-function bodyPrimaryExercise(groupList){ return bodyExercisesForGroups(groupList)[0]||null; }
-function bodyStartExercise(name){
-  const m=machineByName(name); if(!m) return toast('Exercice introuvable','warn');
-  $('#modal-root').innerHTML='';
-  selectedMachineName=m.nom;
-  groupFilter=m.groupe||'';
-  const last=lastEntryFor(m.nom);
-  formDraft={poids:preferredWeightForExercise(m.nom)||last?.poids||m.poids?.[0]||20,series:1,reps:last?.reps||10,rm:''};
-  setRoute('session');
-}
 function humanAtlasClass(z){ return `anatomy-zone muscle-${z?.worst?.tone||'empty'}`; }
-function bodyPremiumClass(z){ return `premium-hit hit-${z?.worst?.tone||'empty'} ${z?.side?`hit-side-${z.side}`:''}`; }
+function bodyPremiumClass(z){ return `premium-hit hit-${z?.worst?.tone||'empty'}`; }
 function bodyHumanSvg(zones){
   const byId=Object.fromEntries(zones.map(z=>[z.id,z]));
-  const hit=(id)=>{
+  const hit=(id,label='')=>{
     const z=byId[id];
     const groups=(z?.groups||[]).join('|');
-    const muted=(bodyMapSide==='front'&&z?.side==='back')||(bodyMapSide==='back'&&z?.side==='front');
-    const action=groups?`data-action="body-focus" data-groups="${esc(groups)}" data-part="${esc(z?.part||'')}" data-label="${esc(z?.label||'')}" role="button" tabindex="0"`:'aria-disabled="true"';
-    return `class="${bodyPremiumClass(z)} ${muted?'is-muted':''}" ${action} aria-label="${esc(z?.label||id)}"`;
+    const action=groups?`data-action="body-focus" data-groups="${esc(groups)}" role="button" tabindex="0"`:'aria-disabled="true"';
+    return `class="${bodyPremiumClass(z)}" ${action} aria-label="${esc(z?.label||label)}"`;
   };
-  const paths=BODY_PARTS.map(p=>`<path id="${esc(p.id)}" ${hit(p.id)} d="${esc(p.d)}"><title>${esc(p.label)}</title></path>`).join('');
-  return `<div class="body-premium-map musclewiki-inspired side-${bodyMapSide}" aria-label="Carte musculaire interactive">
-    <img class="body-premium-img" src="assets/body-map-base.png" alt="Illustration anatomique musculaire face et dos" loading="lazy">
-    <svg class="body-premium-overlay" viewBox="0 0 1318 1066" aria-hidden="false">
-      <g id="body-click-zones">${paths}</g>
+  return `<div class="body-premium-map" aria-label="Carte musculaire interactive">
+    <img class="body-premium-img" src="assets/body-map-premium.svg" alt="Illustration anatomique musculaire face et dos" loading="lazy">
+    <svg class="body-premium-overlay" viewBox="0 0 900 620" aria-hidden="false">
+      <g ${hit('chest','Pectoraux')}>
+        <path d="M180 152 C214 123 246 124 275 154 C268 198 238 218 197 207 C174 196 166 176 180 152Z"/>
+        <path d="M285 154 C314 124 346 123 380 152 C394 176 386 196 363 207 C322 218 292 198 285 154Z"/>
+      </g>
+      <g ${hit('shoulders','Épaules')}>
+        <path d="M132 140 C148 110 177 99 203 117 C188 137 177 165 166 195 C142 192 126 177 121 158Z"/>
+        <path d="M357 117 C383 99 412 110 428 140 C434 158 418 192 394 195 C383 165 372 137 357 117Z"/>
+        <path d="M545 141 C562 110 590 100 616 118 C599 139 589 166 579 196 C554 193 538 178 533 158Z"/>
+        <path d="M753 118 C779 100 807 110 824 141 C830 158 814 193 789 196 C779 166 770 139 753 118Z"/>
+      </g>
+      <g ${hit('arms','Bras')}>
+        <path d="M125 195 C104 243 99 303 116 330 C135 341 149 316 151 278 C154 238 164 209 181 190 C164 199 143 201 125 195Z"/>
+        <path d="M435 195 C456 243 461 303 444 330 C425 341 411 316 409 278 C406 238 396 209 379 190 C396 199 417 201 435 195Z"/>
+        <path d="M537 196 C517 242 511 302 528 330 C548 341 561 317 564 279 C566 239 576 209 593 190 C577 200 556 201 537 196Z"/>
+        <path d="M832 196 C852 242 858 302 841 330 C821 341 808 317 805 279 C803 239 793 209 776 190 C792 200 813 201 832 196Z"/>
+      </g>
+      <g ${hit('core','Core')}>
+        <path d="M224 214 C248 223 312 223 336 214 C344 275 331 337 304 371 C287 388 273 388 256 371 C229 337 216 275 224 214Z"/>
+      </g>
+      <g ${hit('legs','Jambes')}>
+        <path d="M213 390 C247 388 267 408 272 471 L262 568 C249 606 223 602 214 560 C207 504 199 426 213 390Z"/>
+        <path d="M347 390 C313 388 293 408 288 471 L298 568 C311 606 337 602 346 560 C353 504 361 426 347 390Z"/>
+        <path d="M622 390 C653 389 675 408 680 471 L670 568 C657 606 631 602 622 560 C615 504 608 426 622 390Z"/>
+        <path d="M746 390 C715 389 693 408 688 471 L698 568 C711 606 737 602 746 560 C753 504 760 426 746 390Z"/>
+      </g>
+      <g ${hit('back','Dos')}>
+        <path d="M588 151 C624 121 684 121 720 151 C713 253 689 334 654 384 C619 334 595 253 588 151Z"/>
+      </g>
     </svg>
     <div class="body-premium-legend"><span class="ready">Prêt</span><span class="loaded">Récupération</span><span class="danger">À relancer</span></div>
   </div>`;
@@ -581,26 +618,19 @@ function bodyHumanSvg(zones){
 function renderBodyMap(){
   const zones=bodyZoneStats();
   const late=zones.filter(z=>['danger','late'].includes(z.worst?.tone));
-  const ready=zones.filter(z=>z.worst?.tone==='ready');
   const hot=zones.filter(z=>['hot','loaded'].includes(z.worst?.tone));
-  const target=late[0]||ready[0]||zones[0];
-  const rec=target?bodyPrimaryExercise(target.groups):null;
   const headline=late[0]?`${late[0].label} à relancer`:hot[0]?`${hot[0].label} déjà chargé`:'Répartition correcte';
-  const visible=zones.filter(z=>z.side===bodyMapSide);
-  const rows=visible.map(z=>`<button class="body-row ${z.worst?.tone||'empty'}" data-action="body-focus" data-groups="${esc(z.groups.join('|'))}"><span>${esc(z.label)}</span><b>${esc(z.worst?.status||'—')}</b><small>${z.sets} série(s) · ${z.ago===null?'jamais':`J-${z.ago}`} · ${esc(z.hint||'')}</small></button>`).join('');
-  const recBlock=target?`<div class="body-reco-card"><div><span>Recommandé aujourd’hui</span><b>${esc(target.label)}</b><small>${rec?`${esc(rec.machine.nom)} · ${rec.goal?.main||'objectif à construire'}`:'Ajoute un exercice à ce groupe'}</small></div>${rec?`<button class="btn primary small" data-action="body-start-exercise" data-name="${esc(rec.machine.nom)}">Lancer</button>`:''}</div>`:'';
-  return `<section class="bodymap-card human-card muscle-hub card"><div class="section-title no-margin"><div><div class="eyebrow">Muscle map</div><h2>Choisis un muscle</h2></div><span class="body-score">${esc(headline)}</span></div>${recBlock}<div class="body-map-controls"><button class="tab ${bodyMapSide==='front'?'is-active':''}" data-action="body-side" data-side="front">Face</button><button class="tab ${bodyMapSide==='back'?'is-active':''}" data-action="body-side" data-side="back">Dos</button></div><div class="bodymap-layout human-layout muscle-hub-layout"><div class="body-figure human-figure">${bodyHumanSvg(zones)}</div><div class="body-list muscle-panel"><div class="eyebrow">Zones ${bodyMapSide==='back'?'dos':'face'}</div>${rows}</div></div><p class="muted small-text body-help">Clique un muscle pour ouvrir une fiche avec recommandation, alternatives, fiche exercice et vidéo.</p></section>`;
+  const rows=zones.map(z=>`<button class="body-row ${z.worst?.tone||'empty'}" data-action="body-focus" data-groups="${esc(z.groups.join('|'))}"><span>${esc(z.label)}</span><b>${esc(z.worst?.status||'—')}</b><small>${z.sets} série(s) · ${z.ago===null?'jamais':`J-${z.ago}`}</small></button>`).join('');
+  return `<section class="bodymap-card human-card card"><div class="section-title no-margin"><div><div class="eyebrow">Vue corps humain</div><h2>Récupération musculaire</h2></div><span class="body-score">${esc(headline)}</span></div><div class="bodymap-layout human-layout"><div class="body-figure human-figure">${bodyHumanSvg(zones)}</div><div class="body-list">${rows}</div></div><p class="muted small-text body-help">Clique directement une zone du corps. Néon = prêt, orange = chargé, rouge = en retard.</p></section>`;
 }
-function openBodyFocus(groupsStr='', label=''){
+function openBodyFocus(groupsStr=''){
   const selected=String(groupsStr).split('|').filter(Boolean);
   const stats=selected.map(g=>muscleStats(g,30));
-  const title=label || selected.join(' / ') || 'Groupe musculaire';
+  const title=selected.join(' / ')||'Groupe musculaire';
   const totalSets=stats.reduce((s,x)=>s+x.sets,0), totalVol=Math.round(stats.reduce((s,x)=>s+x.vol,0));
   const main=stats.slice().sort((a,b)=>(b.ago??999)-(a.ago??999))[0]||stats[0];
-  const exercises=bodyExercisesForGroups(selected);
-  const best=exercises[0];
-  const exCards=exercises.length?exercises.map((x,i)=>`<article class="body-exercise-card ${i===0?'is-recommended':''}"><div><span>${i===0?'Recommandé':'Alternative'}</span><b>${esc(x.machine.nom)}</b><small>${x.goal?.main?esc(x.goal.main):(x.last?`${x.last.poids} kg × ${x.last.reps}`:'Pas encore travaillé')}</small></div><div class="body-exercise-actions"><button class="btn primary small" data-action="body-start-exercise" data-name="${esc(x.machine.nom)}">Lancer</button><button class="btn small" data-action="exercise-open" data-name="${esc(x.machine.nom)}">Fiche</button>${x.machine.video?`<button class="btn small" data-action="video-open" data-name="${esc(x.machine.nom)}">Vidéo</button>`:''}</div></article>`).join(''):'<p class="muted">Aucun exercice disponible pour ce groupe.</p>';
-  $('#modal-root').innerHTML=`<div class="modal-backdrop body-sheet-backdrop"><div class="modal body-modal body-sheet"><div class="body-sheet-handle"></div><div class="between"><div><div class="eyebrow">Focus musculaire</div><h2>${esc(title)}</h2><p class="muted small-text">${selected.map(esc).join(' / ')}</p></div><button class="btn small secondary" data-action="modal-close">Fermer</button></div><div class="body-focus-grid"><div><span>Statut</span><b>${esc(main?.status||'À construire')}</b></div><div><span>Séries 30j</span><b>${totalSets}</b></div><div><span>Volume 30j</span><b>${totalVol} kg</b></div><div><span>Dernier travail</span><b>${main?.ago===null||main?.ago===undefined?'—':`J-${main.ago}`}</b></div></div>${best?`<section class="body-coach-pick"><span>Prochaine meilleure action</span><h3>${esc(best.machine.nom)}</h3><p>${esc(best.goal?.reason||main?.advice||'Travaille propre, sans forcer inutilement.')}</p><button class="btn primary full" data-action="body-start-exercise" data-name="${esc(best.machine.nom)}">Démarrer cet exercice</button></section>`:''}<section class="book-section"><h3>Conseil coach</h3><p>${esc(main?.advice||'Construis un peu plus d’historique pour lire ce groupe.')}</p></section><section class="book-section"><h3>Exercices ciblés</h3><div class="body-exercise-list">${exCards}</div></section></div></div>`;
+  const exercises=[...new Set(datedWorkoutRows().filter(e=>selected.includes(e.groupe)).map(e=>e.nom))].slice(0,7);
+  $('#modal-root').innerHTML=`<div class="modal-backdrop"><div class="modal body-modal"><div class="between"><div><div class="eyebrow">Focus musculaire</div><h2>${esc(title)}</h2></div><button class="btn small secondary" data-action="modal-close">Fermer</button></div><div class="body-focus-grid"><div><span>Statut</span><b>${esc(main?.status||'À construire')}</b></div><div><span>Séries 30j</span><b>${totalSets}</b></div><div><span>Volume 30j</span><b>${totalVol} kg</b></div><div><span>Dernier travail</span><b>${main?.ago===null?'—':`J-${main.ago}`}</b></div></div><section class="book-section"><h3>Conseil coach</h3><p>${esc(main?.advice||'Construis un peu plus d’historique pour lire ce groupe.')}</p></section><section class="book-section"><h3>Exercices liés</h3>${exercises.length?`<div class="body-exos">${exercises.map(n=>`<button data-action="exercise-open" data-name="${esc(n)}">${esc(n)}</button>`).join('')}</div>`:'<p class="muted">Aucun exercice enregistré récemment.</p>'}</section></div></div>`;
 }
 
 function statsView(){
@@ -638,64 +668,7 @@ function settingsView(){ return `<div class="grid"><section class="card"><div cl
 
 function render(){ $('#today-label').textContent=new Date().toLocaleDateString('fr-FR',{day:'numeric',month:'long'}); $('#page-title').textContent=titles[route]||'GymLog'; view.innerHTML = ({home,session:sessionView,history:historyView,stats:statsView,settings:settingsView,exercise:exerciseDetailView}[route]||home)(); afterRender(); }
 function afterRender(){ const select=$('#machine-select'); if(select){ select.addEventListener('change', () => { captureForm(); rememberFollowDraft(selectedMachineName); selectedMachineName=select.value; const saved=getFollowDraft(selectedMachineName); const last=lastEntryFor(select.value); const m=machineByName(select.value); formDraft=saved ? {...saved} : {poids:last?.poids ?? m?.poids?.[0] ?? 20, series:1, reps:last?.reps ?? 10, rm:''}; render(); }); updateMachineHint(); } const se=$('#stats-exercise'); if(se) se.addEventListener('change',()=>{selectedMachineName=se.value; render();}); const sm=$('#stats-metric'); if(sm) sm.addEventListener('change',()=>{statsMetric=sm.value; render();}); initSwipeDelete(); initFollowDrag(); }
-function videoUrl(m){
-  if(!m?.video) return '';
-  const raw=String(m.video).trim();
-  if(!raw) return '';
-  if(raw.startsWith('http')) return raw;
-  return 'https://youtube.com/watch?v='+raw;
-}
-function youtubeData(raw=''){
-  const value=String(raw||'').trim();
-  if(!value) return null;
-  let id='', start='';
-  try{
-    if(value.startsWith('http')){
-      const u=new URL(value);
-      if(u.hostname.includes('youtu.be')) id=u.pathname.replace('/','');
-      else if(u.hostname.includes('youtube.com')) id=u.searchParams.get('v') || u.pathname.split('/').filter(Boolean).pop() || '';
-      start=u.searchParams.get('t') || u.searchParams.get('start') || '';
-    }else{
-      const [base,q='']=value.split('?');
-      id=base;
-      const params=new URLSearchParams(q);
-      start=params.get('t') || params.get('start') || '';
-    }
-  }catch{
-    const [base,q='']=value.split('?');
-    id=base;
-    const params=new URLSearchParams(q);
-    start=params.get('t') || params.get('start') || '';
-  }
-  id=String(id||'').replace(/[^a-zA-Z0-9_-]/g,'').slice(0,32);
-  if(!id) return null;
-  const seconds=String(start||'').match(/^\d+/)?.[0] || '';
-  return {id,seconds};
-}
-function videoEmbedFor(m){
-  const raw=String(m?.video||'').trim();
-  if(!raw) return null;
-  const external=videoUrl(m);
-  const isMp4=/\.mp4(\?|$)/i.test(raw) || /cloudinary\.com\/.*\/video\/upload/i.test(raw);
-  if(isMp4 && raw.startsWith('http')) return {type:'mp4',src:raw,external};
-  const yt=youtubeData(raw);
-  if(yt){
-    const start=yt.seconds?`&start=${yt.seconds}`:'';
-    return {type:'youtube',src:`https://www.youtube.com/embed/${yt.id}?rel=0&modestbranding=1${start}`,external};
-  }
-  return raw.startsWith('http') ? {type:'external',src:raw,external} : null;
-}
-function openVideoModal(m=currentMachine()){
-  const data=videoEmbedFor(m);
-  if(!data) return toast('Aucune vidéo pour cet exercice','warn');
-  const title=esc(m?.nom||'Vidéo exercice');
-  const player=data.type==='youtube'
-    ? `<iframe class="video-player" src="${esc(data.src)}" title="${title}" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe>`
-    : data.type==='mp4'
-      ? `<video class="video-player" src="${esc(data.src)}" controls playsinline></video>`
-      : `<div class="video-fallback"><p>Cette vidéo ne peut pas être intégrée directement.</p><button class="btn primary" data-action="video-external" data-url="${esc(data.external)}">Ouvrir la vidéo</button></div>`;
-  $('#modal-root').innerHTML=`<div class="video-modal-backdrop"><section class="video-modal"><div class="video-modal-head"><div><div class="eyebrow">Vidéo technique</div><h2>${title}</h2></div><button class="btn small icon-only" data-action="modal-close" title="Fermer">${icon('close')}</button></div><div class="video-frame">${player}</div><div class="video-modal-actions"><button class="btn secondary" data-action="modal-close">Fermer</button><button class="btn primary" data-action="video-external" data-url="${esc(data.external)}">Ouvrir externe</button></div></section></div>`;
-}
+function videoUrl(m){ if(!m?.video) return ''; return m.video.startsWith('http') ? m.video : 'https://youtube.com/watch?v='+m.video; }
 function updateMachineHint(){
   const m=currentMachine(), el=$('#machine-hint'); if(!el) return; if(!m){el.innerHTML=''; return;}
   const currentWeight=Number($('#poids')?.value??formDraft.poids??0), rows=entriesForExercise(m.nom), last=lastEntryFor(m.nom), maxReps=maxRepsForWeight(m.nom,currentWeight), ai=progressionAIFor(m.nom);
@@ -949,7 +922,6 @@ Laisse vide pour revenir au repos intelligent.`, current);
 }
 
 function bindEvents(){ document.addEventListener('click', async e=>{
-  if(e.target.classList?.contains('video-modal-backdrop')){ $('#modal-root').innerHTML=''; return; }
   const routeBtn=e.target.closest('[data-route]'); if(routeBtn) return setRoute(routeBtn.dataset.route);
   const group=e.target.closest('[data-group]'); if(group){ captureForm(); groupFilter=group.dataset.group; const m=filteredMachines()[0]; selectedMachineName=m?.nom || null; formDraft.series=1; formDraft.poids=null; return render(); }
   const ctype=e.target.closest('[data-cardio-type]'); if(ctype){ cardioType=ctype.dataset.cardioType; return render(); }
@@ -966,6 +938,8 @@ function bindEvents(){ document.addEventListener('click', async e=>{
   if(action==='cardio-delete'){ state.session.cardio=state.session.cardio.filter(x=>x.id!==el.dataset.id); persist(); render(); }
   if(action==='session-save') saveSession();
   if(action==='session-clear' && await confirmModal('Effacer la séance en cours ?')){ state.session={entries:[],cardio:[]}; state.ui.followMode=null; formDraft.series=1; persist(); render(); }
+  if(action==='history-day-toggle'){ state.ui.historyOpen ||= {}; state.ui.historyOpen[el.dataset.date]=!state.ui.historyOpen[el.dataset.date]; persist(); render(); }
+  if(action==='history-exo-toggle'){ state.ui.historyExerciseOpen ||= {}; const k=`${el.dataset.date}:${el.dataset.key}`; state.ui.historyExerciseOpen[k]=!state.ui.historyExerciseOpen[k]; persist(); render(); }
   if(action==='day-delete' && await confirmModal('Supprimer cette journée ?')){ delete state.history[el.dataset.date]; persist(); render(); }
   if(action==='template-new') createTemplateModal();
   if(action==='template-smart-open') openSmartTemplateModal();
@@ -983,12 +957,9 @@ function bindEvents(){ document.addEventListener('click', async e=>{
   if(action==='exercise-back'){ setRoute('session'); }
   if(action==='book-close'){ $('#modal-root').innerHTML=''; }
   if(action==='exercise-book-tab'){ exerciseBookTab=el.dataset.tab||'analyse'; openExerciseBook(exerciseDetailName); }
-  if(action==='body-focus') openBodyFocus(el.dataset.groups||'', el.dataset.label||'');
-  if(action==='body-side'){ bodyMapSide=el.dataset.side||'front'; render(); }
-  if(action==='body-start-exercise') bodyStartExercise(el.dataset.name||'');
+  if(action==='body-focus') openBodyFocus(el.dataset.groups||'');
   if(action==='machine-new') machineModal(null);
-  if(action==='video-open') openVideoModal(el.dataset.name ? machineByName(el.dataset.name) : currentMachine());
-  if(action==='video-external'){ const url=el.dataset.url; if(url) window.open(url,'_blank','noopener'); }
+  if(action==='video-open'){ const url=videoUrl(currentMachine()); url ? window.open(url,'_blank') : toast('Aucune vidéo pour cet exercice','warn'); }
   if(action==='machine-edit') machineModal($('#machine-select')?.value);
   if(action==='machine-save') saveMachine(el.dataset.original||'');
   if(action==='modal-close') $('#modal-root').innerHTML='';
@@ -1004,7 +975,6 @@ function bindEvents(){ document.addEventListener('click', async e=>{
  $('#theme-toggle').addEventListener('click',()=>setTheme(state.settings.theme==='light'?'dark':'light'));
  document.addEventListener('input', e=>{ if(['poids','series','reps','real-rm'].includes(e.target.id)) captureForm(); });
  document.addEventListener('change', async e=>{ if(e.target.id==='import-json'){ const file=e.target.files[0]; if(!file) return; try{ state=importState(await file.text()); state.customMachines ||= []; state.ui ||= {entryOpen:{},followMode:null}; setTheme(state.settings.theme); toast('Import réussi','ok'); setRoute('home'); }catch(err){ toast('Import impossible : '+err.message,'warn'); } } });
- document.addEventListener('keydown', e=>{ if(e.key==='Escape' && $('#modal-root .video-modal-backdrop')) $('#modal-root').innerHTML=''; });
 }
 
 setTheme(state.settings.theme || 'dark');
